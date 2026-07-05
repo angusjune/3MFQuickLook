@@ -11,8 +11,10 @@ import Testing
 /// Never probe via `qlmanage -t`: it hangs against extension-based providers
 /// (prototype finding).
 @Suite struct ThumbnailSmokeTests {
-    private static let hostAppBundleID = "com.angusjune.ThreeMFQuickLook"
-    private static let thumbnailExtensionID = "com.angusjune.ThreeMFQuickLook.ThumbExt"
+    private static let extensionIDs = [
+        "com.angusjune.ThreeMFQuickLook.PreviewExt",
+        "com.angusjune.ThreeMFQuickLook.ThumbExt",
+    ]
 
     @Test(.timeLimit(.minutes(2)))
     func thumbnailForA3MFFileHasVisibleContent() async throws {
@@ -43,7 +45,7 @@ import Testing
 
     /// Launches the built Host App (a sibling of this test bundle in the build
     /// products directory) so macOS registers its Quick Look extensions, and
-    /// waits until pluginkit reports the Thumbnail Extension.
+    /// waits until pluginkit reports both extensions.
     private func registerHostApp() async throws {
         let productsDirectory = Bundle(for: BundleLocator.self).bundleURL
             .deletingLastPathComponent()
@@ -58,11 +60,12 @@ import Testing
         _ = try await NSWorkspace.shared.openApplication(at: appURL, configuration: configuration)
 
         let deadline = Date().addingTimeInterval(30)
-        while Date() < deadline {
-            if pluginkitKnows(Self.thumbnailExtensionID) { return }
-            try await Task.sleep(for: .milliseconds(500))
+        var registered = false
+        while !registered, Date() < deadline {
+            registered = Self.extensionIDs.allSatisfy(pluginkitKnows)
+            if !registered { try await Task.sleep(for: .milliseconds(500)) }
         }
-        Issue.record("Thumbnail Extension never appeared in pluginkit -m")
+        try #require(registered, "extensions never appeared in pluginkit -m: \(Self.extensionIDs)")
     }
 
     private func pluginkitKnows(_ identifier: String) -> Bool {

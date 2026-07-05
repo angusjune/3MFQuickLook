@@ -36,18 +36,12 @@ targets:
       path: App/App.entitlements
       properties:
         com.apple.security.app-sandbox: true
-        com.apple.security.files.user-selected.read-only: true
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 3MF QuickLook
         NSPrincipalClass: NSApplication
         LSApplicationCategoryType: public.app-category.utilities
-        CFBundleDocumentTypes:
-          - CFBundleTypeName: 3MF Package
-            LSItemContentTypes: [io.3mf.model]
-            CFBundleTypeRole: Viewer
-            LSHandlerRank: Alternate
         UTImportedTypeDeclarations:
           - UTTypeIdentifier: io.3mf.model
             UTTypeDescription: 3D Manufacturing Format package
