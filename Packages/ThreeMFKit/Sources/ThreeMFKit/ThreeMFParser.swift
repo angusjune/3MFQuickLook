@@ -31,6 +31,7 @@ public struct ThreeMFParser: Sendable {
         return ThreeMFDocument(
             unit: root.unit,
             objects: partOrder.flatMap { parts[$0]!.resolvedObjects() },
-            buildItems: root.buildItems())
+            buildItems: root.buildItems(),
+            slicer: SlicerMetadataParser.parse(package: package, rootPartPath: rootPath))
     }
 }

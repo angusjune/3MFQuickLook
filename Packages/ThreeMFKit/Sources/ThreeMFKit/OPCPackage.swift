@@ -49,6 +49,13 @@ final class OPCPackage {
         return data
     }
 
+    /// The raw bytes of a part, or nil when the package has no such part
+    /// (or it cannot be read).
+    func partDataIfPresent(at partPath: String) -> Data? {
+        guard archive[String(partPath.drop(while: { $0 == "/" }))] != nil else { return nil }
+        return try? partData(at: partPath)
+    }
+
     /// The package's root model part, from the `_rels/.rels` relationship of
     /// type `…/3dmanufacturing/2013/01/3dmodel`.
     func rootModelPartPath() throws -> String {
@@ -62,35 +69,13 @@ final class OPCPackage {
     }
 
     private static func firstModelRelationshipTarget(in data: Data) -> String? {
-        let doc: xmlDocPtr? = data.withUnsafeBytes { buffer in
-            xmlReadMemory(
-                buffer.bindMemory(to: CChar.self).baseAddress, Int32(buffer.count),
-                nil, nil, Int32(XML_PARSE_NONET.rawValue))
+        LibXML.withDocument(data) { doc in
+            guard let root = xmlDocGetRootElement(doc) else { return nil }
+            for relationship in LibXML.children(of: root, named: "Relationship")
+            where LibXML.attribute(of: relationship, named: "Type") == modelRelationshipType {
+                return LibXML.attribute(of: relationship, named: "Target")
+            }
+            return nil
         }
-        guard let doc else { return nil }
-        defer { xmlFreeDoc(doc) }
-
-        guard let root = xmlDocGetRootElement(doc) else { return nil }
-        var node = root.pointee.children
-        while let current = node {
-            defer { node = current.pointee.next }
-            guard current.pointee.type == XML_ELEMENT_NODE,
-                  xmlStrEqual(current.pointee.name, "Relationship") != 0,
-                  attributeValue(of: current, named: "Type") == modelRelationshipType,
-                  let target = attributeValue(of: current, named: "Target")
-            else { continue }
-            return target
-        }
-        return nil
-    }
-
-    /// Reads an attribute's text without `xmlGetProp` — that would allocate
-    /// and require `xmlFree`, a mutable libxml2 global Swift 6 rejects.
-    private static func attributeValue(of node: xmlNodePtr, named name: String) -> String? {
-        guard let attribute = xmlHasProp(node, name),
-              let text = attribute.pointee.children,
-              let content = text.pointee.content
-        else { return nil }
-        return String(cString: content)
     }
 }

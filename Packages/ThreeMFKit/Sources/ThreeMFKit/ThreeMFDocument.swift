@@ -1,23 +1,114 @@
 import simd
 
 /// The parsed domain model of a 3MF package: the geometry, colors, and build
-/// layout the Viewer and Thumbnail Extension need. Slicer metadata (plates,
-/// filaments) is out of scope here (issue #4).
+/// layout the Viewer and Thumbnail Extension need.
 public struct ThreeMFDocument: Equatable, Sendable {
     public var unit: LengthUnit
     /// All object resources, across every model part, in document order.
     public var objects: [ObjectResource]
     /// The build items of the root model part, in document order.
     public var buildItems: [BuildItem]
+    /// Slicer-project metadata (Bambu Studio / OrcaSlicer dialect); nil for
+    /// Vanilla files — including PrusaSlicer projects, which are Vanilla-plus
+    /// by decision (CONTEXT.md).
+    public var slicer: SlicerProjectInfo?
 
-    public init(unit: LengthUnit = .millimeter, objects: [ObjectResource] = [], buildItems: [BuildItem] = []) {
+    public init(
+        unit: LengthUnit = .millimeter,
+        objects: [ObjectResource] = [],
+        buildItems: [BuildItem] = [],
+        slicer: SlicerProjectInfo? = nil
+    ) {
         self.unit = unit
         self.objects = objects
         self.buildItems = buildItems
+        self.slicer = slicer
     }
 
     public func object(_ ref: ResourceRef) -> ObjectResource? {
         objects.first { $0.ref == ref }
+    }
+}
+
+/// What makes a package a Slicer Project (CONTEXT.md): its Plates, filament
+/// definitions, and object→filament assignments, from the Bambu/Orca
+/// `Metadata/*.config` parts.
+public struct SlicerProjectInfo: Equatable, Sendable {
+    /// Filaments in extruder order (extruder N ↔ index N−1).
+    public var filaments: [Filament]
+    /// All Build Plates, in file order.
+    public var plates: [Plate]
+    /// 0-based index into `filaments` per object, from the object-level
+    /// `extruder` assignment. Objects without an entry use filament 0.
+    public var filamentIndexByObject: [ResourceRef: Int]
+    /// The printable bed rectangle (model units), from `printable_area`;
+    /// nil when the project doesn't record one.
+    public var plateSize: PlateSize?
+
+    public init(
+        filaments: [Filament] = [],
+        plates: [Plate] = [],
+        filamentIndexByObject: [ResourceRef: Int] = [:],
+        plateSize: PlateSize? = nil
+    ) {
+        self.filaments = filaments
+        self.plates = plates
+        self.filamentIndexByObject = filamentIndexByObject
+        self.plateSize = plateSize
+    }
+
+    /// The Plate the preview shows by default: the first one that has objects.
+    public var defaultPlate: Plate? {
+        plates.first { !$0.objectRefs.isEmpty } ?? plates.first
+    }
+}
+
+/// One filament definition from `project_settings.config`.
+public struct Filament: Equatable, Sendable {
+    public var color: ColorRGBA?
+    /// Material name as the slicer records it, e.g. "PLA".
+    public var type: String?
+
+    public init(color: ColorRGBA? = nil, type: String? = nil) {
+        self.color = color
+        self.type = type
+    }
+}
+
+/// One Build Plate (CONTEXT.md: Plate): an arrangement of objects printed
+/// together, from a `<plate>` block of `model_settings.config`.
+public struct Plate: Equatable, Sendable {
+    /// The slicer's 1-based `plater_id`.
+    public var id: Int
+    /// The user-visible plate name; nil when the slicer recorded none.
+    public var name: String?
+    /// The root-part objects placed on this plate, in file order.
+    public var objectRefs: [ResourceRef]
+    /// Zip-absolute path of the Plate Thumbnail PNG, when present.
+    public var thumbnailPartPath: String?
+
+    public init(
+        id: Int,
+        name: String? = nil,
+        objectRefs: [ResourceRef] = [],
+        thumbnailPartPath: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.objectRefs = objectRefs
+        self.thumbnailPartPath = thumbnailPartPath
+    }
+}
+
+/// The printable bed rectangle in model units (the bounding box of the
+/// slicer's `printable_area` corners).
+public struct PlateSize: Equatable, Sendable {
+    public var width: Float
+    public var depth: Float
+
+    public init(width: Float, depth: Float) {
+        self.width = width
+        self.depth = depth
     }
 }
 
