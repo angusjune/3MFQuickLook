@@ -8,21 +8,21 @@ public struct ThreeMFDocument: Equatable, Sendable {
     public var objects: [ObjectResource]
     /// The build items of the root model part, in document order.
     public var buildItems: [BuildItem]
-    /// Slicer-project metadata (Bambu Studio / OrcaSlicer dialect); nil for
+    /// Slicer Project metadata (Bambu Studio / OrcaSlicer dialect); nil for
     /// Vanilla files — including PrusaSlicer projects, which are Vanilla-plus
-    /// by decision (CONTEXT.md).
-    public var slicer: SlicerProjectInfo?
+    /// (CONTEXT.md).
+    public var slicerProject: SlicerProjectInfo?
 
     public init(
         unit: LengthUnit = .millimeter,
         objects: [ObjectResource] = [],
         buildItems: [BuildItem] = [],
-        slicer: SlicerProjectInfo? = nil
+        slicerProject: SlicerProjectInfo? = nil
     ) {
         self.unit = unit
         self.objects = objects
         self.buildItems = buildItems
-        self.slicer = slicer
+        self.slicerProject = slicerProject
     }
 
     public func object(_ ref: ResourceRef) -> ObjectResource? {
@@ -43,23 +43,33 @@ public struct SlicerProjectInfo: Equatable, Sendable {
     public var filamentIndexByObject: [ResourceRef: Int]
     /// The printable bed rectangle (model units), from `printable_area`;
     /// nil when the project doesn't record one.
-    public var plateSize: PlateSize?
+    public var plateRect: PlateRect?
 
     public init(
         filaments: [Filament] = [],
         plates: [Plate] = [],
         filamentIndexByObject: [ResourceRef: Int] = [:],
-        plateSize: PlateSize? = nil
+        plateRect: PlateRect? = nil
     ) {
         self.filaments = filaments
         self.plates = plates
         self.filamentIndexByObject = filamentIndexByObject
-        self.plateSize = plateSize
+        self.plateRect = plateRect
     }
 
-    /// The Plate the preview shows by default: the first one that has objects.
+    /// The Plate the preview shows by default: the first one that has
+    /// objects, nil when none does.
     public var defaultPlate: Plate? {
-        plates.first { !$0.objectRefs.isEmpty } ?? plates.first
+        plates.first { !$0.objectRefs.isEmpty }
+    }
+
+    /// The filament color the project explicitly assigns to the object (or
+    /// part), through its `extruder` entry. Out-of-range indices fall back to
+    /// filament 0, matching the slicer; nil when the object has no explicit
+    /// assignment.
+    public func filamentColor(of ref: ResourceRef) -> ColorRGBA? {
+        guard let index = filamentIndexByObject[ref], !filaments.isEmpty else { return nil }
+        return (filaments.indices.contains(index) ? filaments[index] : filaments[0]).color
     }
 }
 
@@ -100,13 +110,16 @@ public struct Plate: Equatable, Sendable {
     }
 }
 
-/// The printable bed rectangle in model units (the bounding box of the
-/// slicer's `printable_area` corners).
-public struct PlateSize: Equatable, Sendable {
+/// The printable bed rectangle in model units: the bounding box of the
+/// slicer's `printable_area` corners. The origin is usually zero, but Orca
+/// printer profiles can offset the bed.
+public struct PlateRect: Equatable, Sendable {
+    public var origin: SIMD2<Float>
     public var width: Float
     public var depth: Float
 
-    public init(width: Float, depth: Float) {
+    public init(origin: SIMD2<Float> = .zero, width: Float, depth: Float) {
+        self.origin = origin
         self.width = width
         self.depth = depth
     }

@@ -14,7 +14,7 @@ import ThreeMFKit
     @Test(.enabled(if: Corpus.has("slicer-projects/FlightScnr.3mf")))
     func bambuProjectExposesPlateFilamentsAndAssignments() throws {
         let doc = try ThreeMFParser().parse(fileAt: Corpus.url("slicer-projects/FlightScnr.3mf"))
-        let slicer = try #require(doc.slicer)
+        let slicer = try #require(doc.slicerProject)
 
         // project_settings.config: filament_colour ["#000000"], filament_type ["PLA"].
         #expect(slicer.filaments.count == 1)
@@ -39,7 +39,7 @@ import ThreeMFKit
         }
 
         // printable_area ['0x0', '256x0', '256x256', '0x256'].
-        #expect(slicer.plateSize == PlateSize(width: 256, depth: 256))
+        #expect(slicer.plateRect == PlateRect(width: 256, depth: 256))
     }
 
     // Ground truth for the synthetic fixtures is by construction:
@@ -49,7 +49,7 @@ import ThreeMFKit
     func multiPlateProjectExposesAllPlatesAndBothFilaments() throws {
         let doc = try ThreeMFParser().parse(
             fileAt: Corpus.url("slicer-projects/synthetic_multiplate.3mf"))
-        let slicer = try #require(doc.slicer)
+        let slicer = try #require(doc.slicerProject)
 
         #expect(slicer.filaments.map(\.color) == [
             ColorRGBA(red: 255, green: 0, blue: 0),
@@ -72,16 +72,32 @@ import ThreeMFKit
         #expect(slicer.filamentIndexByObject[ResourceRef(partPath: Self.rootPart, id: 2)] == 0)
         #expect(slicer.filamentIndexByObject[ResourceRef(partPath: Self.rootPart, id: 4)] == 1)
 
-        #expect(slicer.plateSize == PlateSize(width: 180, depth: 180))
+        // Part-level assignment: the "Topper" part (id 2 → object_2.model
+        // object 2) carries its own extruder 1; the pyramid part inherits the
+        // object level and gets no explicit entry.
+        let topperRef = ResourceRef(partPath: "/3D/Objects/object_2.model", id: 2)
+        #expect(slicer.filamentIndexByObject[topperRef] == 0)
+        #expect(slicer.filamentColor(of: topperRef) == ColorRGBA(red: 255, green: 0, blue: 0))
+        #expect(slicer.filamentIndexByObject[ResourceRef(partPath: "/3D/Objects/object_2.model", id: 1)] == nil)
+
+        #expect(slicer.plateRect == PlateRect(width: 180, depth: 180))
 
         // Production-extension geometry split across parts loads completely.
-        #expect(doc.objects.count == 4)
+        #expect(doc.objects.count == 5)
         let cube = try #require(doc.object(ResourceRef(partPath: "/3D/Objects/object_1.model", id: 1))?.mesh)
         #expect(cube.positions.count == 8)
         #expect(cube.triangleCount == 12)
         let pyramid = try #require(doc.object(ResourceRef(partPath: "/3D/Objects/object_2.model", id: 1))?.mesh)
         #expect(pyramid.positions.count == 5)
         #expect(pyramid.triangleCount == 6)
+        let topper = try #require(doc.object(topperRef)?.mesh)
+        #expect(topper.positions.count == 8)
+        #expect(topper.triangleCount == 12)
+    }
+
+    @Test func defaultPlateIsNilWhenNoPlateHasObjects() {
+        let info = SlicerProjectInfo(plates: [Plate(id: 1), Plate(id: 2)])
+        #expect(info.defaultPlate == nil)
     }
 
     @Test(.enabled(if: Corpus.has("slicer-projects/synthetic_prusa.3mf")))
@@ -91,7 +107,7 @@ import ThreeMFKit
 
         // PrusaSlicer projects are Vanilla-plus (CONTEXT.md), never Slicer
         // Projects: no Bambu configs → no slicer info.
-        #expect(doc.slicer == nil)
+        #expect(doc.slicerProject == nil)
 
         let mesh = try #require(doc.objects.first?.mesh)
         #expect(mesh.positions.count == 8)
@@ -103,6 +119,6 @@ import ThreeMFKit
     @Test(.enabled(if: Corpus.has("vanilla/box.3mf")))
     func vanillaFileHasNoSlicerProjectInfo() throws {
         let doc = try ThreeMFParser().parse(fileAt: Corpus.url("vanilla/box.3mf"))
-        #expect(doc.slicer == nil)
+        #expect(doc.slicerProject == nil)
     }
 }

@@ -28,10 +28,12 @@ public struct ThreeMFParser: Sendable {
         }
 
         let root = parts[rootPath]!
+        let objects = partOrder.flatMap { parts[$0]!.resolvedObjects() }
         return ThreeMFDocument(
             unit: root.unit,
-            objects: partOrder.flatMap { parts[$0]!.resolvedObjects() },
+            objects: objects,
             buildItems: root.buildItems(),
-            slicer: SlicerMetadataParser.parse(package: package, rootPartPath: rootPath))
+            slicerProject: SlicerMetadataParser.parse(
+                package: package, rootPartPath: rootPath, objects: objects))
     }
 }

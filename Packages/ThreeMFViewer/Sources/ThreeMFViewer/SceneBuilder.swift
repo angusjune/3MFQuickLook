@@ -62,15 +62,19 @@ public enum SceneBuilder {
                 return BuildItem(objectRef: object.ref)
             }
             : document.buildItems
-        let items = defaultPlateItems(of: allItems, slicer: document.slicer)
+        let items = defaultPlateItems(of: allItems, slicer: document.slicerProject)
 
         for item in items {
             guard let object = objectsByRef[item.objectRef] else { continue }
+            // Objects without an explicit assignment print on filament 0.
+            let itemColor = document.slicerProject?.filamentColor(of: item.objectRef)
+                ?? document.slicerProject?.filaments.first?.color
             let entity = makeEntity(
                 for: object,
                 objectsByRef: objectsByRef,
                 visited: [],
-                filamentColor: filamentColor(of: item.objectRef, in: document.slicer))
+                slicerProject: document.slicerProject,
+                filamentColor: itemColor)
             entity.transform = Transform(matrix: item.transform)
             model.addChild(entity)
         }
@@ -78,24 +82,14 @@ public enum SceneBuilder {
     }
 
     /// The build items the preview stages: for a Slicer Project, the default
-    /// Plate's (the first with objects); everything otherwise — including when
-    /// the plate assignments match no build item (lenient: a broken config
-    /// must not empty the preview).
+    /// Plate's; everything otherwise — including when the plate assignments
+    /// match no build item (lenient: a broken config must not empty the
+    /// preview).
     private static func defaultPlateItems(of items: [BuildItem], slicer: SlicerProjectInfo?) -> [BuildItem] {
-        guard let plate = slicer?.defaultPlate, !plate.objectRefs.isEmpty else { return items }
+        guard let plate = slicer?.defaultPlate else { return items }
         let assigned = Set(plate.objectRefs)
         let plateItems = items.filter { assigned.contains($0.objectRef) }
         return plateItems.isEmpty ? items : plateItems
-    }
-
-    /// The filament color a Slicer Project assigns the object: its extruder's
-    /// filament, or filament 0 when the object has no explicit assignment.
-    private static func filamentColor(of ref: ResourceRef, in slicer: SlicerProjectInfo?) -> ColorRGBA? {
-        guard let slicer, !slicer.filaments.isEmpty else { return nil }
-        let index = slicer.filamentIndexByObject[ref] ?? 0
-        let filament = slicer.filaments.indices.contains(index)
-            ? slicer.filaments[index] : slicer.filaments[0]
-        return filament.color
     }
 
     @MainActor
@@ -103,6 +97,7 @@ public enum SceneBuilder {
         for object: ObjectResource,
         objectsByRef: [ResourceRef: ObjectResource],
         visited: Set<ResourceRef>,
+        slicerProject: SlicerProjectInfo? = nil,
         filamentColor: ColorRGBA? = nil
     ) -> Entity {
         guard !visited.contains(object.ref) else { return Entity() }
@@ -120,7 +115,10 @@ public enum SceneBuilder {
                     for: target,
                     objectsByRef: objectsByRef,
                     visited: visited.union([object.ref]),
-                    filamentColor: filamentColor)
+                    slicerProject: slicerProject,
+                    // A part-level extruder assignment overrides the color
+                    // inherited from the containing object.
+                    filamentColor: slicerProject?.filamentColor(of: target.ref) ?? filamentColor)
                 child.transform = Transform(matrix: component.transform)
                 parent.addChild(child)
             }
@@ -259,33 +257,33 @@ public enum SceneBuilder {
     /// in which case it centers under the geometry instead.
     @MainActor
     private static func makePlateHint(for document: ThreeMFDocument, beneath model: Entity) -> Entity? {
-        guard let size = document.slicer?.plateSize else { return nil }
+        guard let rect = document.slicerProject?.plateRect else { return nil }
 
         let hint = Entity()
         hint.name = "PlateHint"
         hint.transform = model.transform
 
         let surfaceThickness: Float = 0.4
-        let line = max(size.width, size.depth) * 0.01
+        let line = max(rect.width, rect.depth) * 0.01
 
         let surface = ModelEntity(
-            mesh: .generateBox(size: SIMD3(size.width, size.depth, surfaceThickness)),
+            mesh: .generateBox(size: SIMD3(rect.width, rect.depth, surfaceThickness)),
             materials: [SimpleMaterial(
                 color: NSColor(srgbRed: 0.93, green: 0.93, blue: 0.94, alpha: 1),
                 roughness: 1, isMetallic: false)])
         // Top face just below the bed plane so flat-bottomed parts don't
         // z-fight it.
-        surface.position = SIMD3(size.width / 2, size.depth / 2, -surfaceThickness / 2 - 0.05)
+        surface.position = SIMD3(rect.width / 2, rect.depth / 2, -surfaceThickness / 2 - 0.05)
         hint.addChild(surface)
 
         let borderMaterial = SimpleMaterial(
             color: NSColor(srgbRed: 0.68, green: 0.68, blue: 0.70, alpha: 1),
             roughness: 0.9, isMetallic: false)
         let edges: [(SIMD2<Float>, SIMD2<Float>)] = [
-            (SIMD2(size.width, line), SIMD2(size.width / 2, line / 2)),
-            (SIMD2(size.width, line), SIMD2(size.width / 2, size.depth - line / 2)),
-            (SIMD2(line, size.depth - 2 * line), SIMD2(line / 2, size.depth / 2)),
-            (SIMD2(line, size.depth - 2 * line), SIMD2(size.width - line / 2, size.depth / 2)),
+            (SIMD2(rect.width, line), SIMD2(rect.width / 2, line / 2)),
+            (SIMD2(rect.width, line), SIMD2(rect.width / 2, rect.depth - line / 2)),
+            (SIMD2(line, rect.depth - 2 * line), SIMD2(line / 2, rect.depth / 2)),
+            (SIMD2(line, rect.depth - 2 * line), SIMD2(rect.width - line / 2, rect.depth / 2)),
         ]
         for (extent, center) in edges {
             let edge = ModelEntity(
@@ -295,22 +293,28 @@ public enum SceneBuilder {
             hint.addChild(edge)
         }
 
-        // Slicer bed coordinates start at the model-space origin; fall back to
-        // centering when the build sits elsewhere (multi-plate global space).
+        // The hint sits at the metadata's bed origin; fall back to centering
+        // when the build sits elsewhere (multi-plate global space).
+        var offset = rect.origin
         let bounds = model.visualBounds(relativeTo: nil)
         if bounds.extents.max() > 0 {
             let scale = document.unit.metersPerUnit
             let minX = bounds.min.x / scale, maxX = bounds.max.x / scale
             let minY = -bounds.max.z / scale, maxY = -bounds.min.z / scale
             let tolerance: Float = 1
-            let fitsAtOrigin = minX >= -tolerance && maxX <= size.width + tolerance
-                && minY >= -tolerance && maxY <= size.depth + tolerance
+            let fitsAtOrigin = minX >= rect.origin.x - tolerance
+                && maxX <= rect.origin.x + rect.width + tolerance
+                && minY >= rect.origin.y - tolerance
+                && maxY <= rect.origin.y + rect.depth + tolerance
             if !fitsAtOrigin {
-                for child in hint.children {
-                    child.position.x += (minX + maxX - size.width) / 2
-                    child.position.y += (minY + maxY - size.depth) / 2
-                }
+                offset = SIMD2(
+                    (minX + maxX - rect.width) / 2,
+                    (minY + maxY - rect.depth) / 2)
             }
+        }
+        for child in hint.children {
+            child.position.x += offset.x
+            child.position.y += offset.y
         }
         return hint
     }

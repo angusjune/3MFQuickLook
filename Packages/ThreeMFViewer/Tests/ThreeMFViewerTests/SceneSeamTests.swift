@@ -208,7 +208,7 @@ import ThreeMFViewer
     /// filaments red + green, object 1 → extruder 1, object 2 → extruder 2.
     private static func slicerDocument(
         plates: [Plate]? = nil,
-        plateSize: PlateSize? = PlateSize(width: 180, depth: 180)
+        plateRect: PlateRect? = PlateRect(width: 180, depth: 180)
     ) -> ThreeMFDocument {
         let refs = [ResourceRef(partPath: rootPart, id: 1), ResourceRef(partPath: rootPart, id: 2)]
         var itemTransform = matrix_identity_float4x4
@@ -219,14 +219,14 @@ import ThreeMFViewer
                 BuildItem(objectRef: refs[0]),
                 BuildItem(objectRef: refs[1], transform: itemTransform),
             ])
-        doc.slicer = SlicerProjectInfo(
+        doc.slicerProject = SlicerProjectInfo(
             filaments: [
                 Filament(color: ColorRGBA(red: 255, green: 0, blue: 0), type: "PLA"),
                 Filament(color: ColorRGBA(red: 0, green: 255, blue: 0), type: "PETG"),
             ],
             plates: plates ?? [Plate(id: 1, objectRefs: refs)],
             filamentIndexByObject: [refs[0]: 0, refs[1]: 1],
-            plateSize: plateSize)
+            plateRect: plateRect)
         return doc
     }
 
@@ -253,11 +253,11 @@ import ThreeMFViewer
                 ])),
             ],
             buildItems: [BuildItem(objectRef: wrapperRef)])
-        doc.slicer = SlicerProjectInfo(
+        doc.slicerProject = SlicerProjectInfo(
             filaments: [Filament(color: ColorRGBA(red: 0, green: 0, blue: 255), type: "PLA")],
             plates: [Plate(id: 1, objectRefs: [wrapperRef])],
             filamentIndexByObject: [wrapperRef: 0],
-            plateSize: PlateSize(width: 256, depth: 256))
+            plateRect: PlateRect(width: 256, depth: 256))
 
         let scene = SceneBuilder.makeScene(for: doc)
         let model = try #require(modelEntities(in: try modelSubtree(of: scene)).first)
@@ -278,6 +278,55 @@ import ThreeMFViewer
         #expect(hint.visualBounds(relativeTo: nil).max.y <= 1e-4)
 
         #expect(scene.findEntity(named: "Backdrop") == nil)
+    }
+
+    @Test func partLevelExtruderOverridesTheObjectFilamentColor() throws {
+        // A two-part object: the wrapper prints on filament 0 (red); one part
+        // carries its own assignment to filament 1 (green).
+        let pyramidRef = ResourceRef(partPath: "/3D/Objects/object_2.model", id: 1)
+        let topperRef = ResourceRef(partPath: "/3D/Objects/object_2.model", id: 2)
+        let wrapperRef = ResourceRef(partPath: Self.rootPart, id: 4)
+        var doc = Self.document(
+            objects: [
+                ObjectResource(ref: pyramidRef, content: .mesh(Self.cubeMesh())),
+                ObjectResource(ref: topperRef, content: .mesh(Self.cubeMesh())),
+                ObjectResource(ref: wrapperRef, content: .components([
+                    Component(objectRef: pyramidRef),
+                    Component(objectRef: topperRef),
+                ])),
+            ],
+            buildItems: [BuildItem(objectRef: wrapperRef)])
+        doc.slicerProject = SlicerProjectInfo(
+            filaments: [
+                Filament(color: ColorRGBA(red: 255, green: 0, blue: 0), type: "PLA"),
+                Filament(color: ColorRGBA(red: 0, green: 255, blue: 0), type: "PETG"),
+            ],
+            plates: [Plate(id: 1, objectRefs: [wrapperRef])],
+            filamentIndexByObject: [wrapperRef: 0, topperRef: 1],
+            plateRect: PlateRect(width: 180, depth: 180))
+
+        let scene = SceneBuilder.makeScene(for: doc)
+        let models = modelEntities(in: try modelSubtree(of: scene))
+        #expect(models.count == 2)
+        let tints = try models.map { try tint(of: try #require($0.model?.materials.first)) }
+        #expect(tints.contains { simd_distance($0, SIMD3(1, 0, 0)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(0, 1, 0)) < 0.02 })
+    }
+
+    @Test func plateHintHonorsAnOffsetBedOrigin() throws {
+        // An Orca-style offset bed: printable_area from (-20, -30). The build
+        // (cubes spanning 0…110) fits inside it, so the hint must sit at the
+        // metadata origin, not at zero.
+        let scene = SceneBuilder.makeScene(for: Self.slicerDocument(
+            plateRect: PlateRect(origin: SIMD2(-20, -30), width: 180, depth: 180)))
+
+        let hint = try #require(scene.findEntity(named: "PlateHint"))
+        let bounds = hint.visualBounds(relativeTo: nil)
+        // Model space (mm, Z-up) → world (m, Y-up): x → x/1000, y → -z/1000.
+        #expect(abs(bounds.min.x - -0.02) < 1e-4)
+        #expect(abs(bounds.max.x - 0.16) < 1e-4)
+        #expect(abs(bounds.max.z - 0.03) < 1e-4)
+        #expect(abs(bounds.min.z - -0.15) < 1e-4)
     }
 
     @Test func sceneDefaultsToTheFirstPlateThatHasObjects() throws {
@@ -315,7 +364,7 @@ import ThreeMFViewer
     }
 
     @Test func slicerProjectWithoutPlateSizeKeepsTheBackdrop() throws {
-        let scene = SceneBuilder.makeScene(for: Self.slicerDocument(plateSize: nil))
+        let scene = SceneBuilder.makeScene(for: Self.slicerDocument(plateRect: nil))
         #expect(scene.findEntity(named: "PlateHint") == nil)
         #expect(scene.findEntity(named: "Backdrop") != nil)
     }
@@ -330,8 +379,13 @@ import ThreeMFViewer
         .deletingLastPathComponent()  // strip Packages
         .appendingPathComponent("Corpus")
 
-    @Test(.enabled(if: FileManager.default.fileExists(
-        atPath: corpusRoot.appendingPathComponent("vanilla/synthetic_basematerials.3mf").path)))
+    /// Corpus binaries are gitignored; tests that need one skip when absent.
+    nonisolated private static func corpusHas(_ relativePath: String) -> Bool {
+        FileManager.default.fileExists(
+            atPath: corpusRoot.appendingPathComponent(relativePath).path)
+    }
+
+    @Test(.enabled(if: corpusHas("vanilla/synthetic_basematerials.3mf")))
     func corpusBaseMaterialsFileBuildsColoredPlacedEntities() throws {
         let url = Self.corpusRoot.appendingPathComponent("vanilla/synthetic_basematerials.3mf")
         let scene = SceneBuilder.makeScene(for: try ThreeMFParser().parse(fileAt: url))
@@ -349,8 +403,7 @@ import ThreeMFViewer
         #expect(translations.contains { simd_distance($0, SIMD3(30, 0, 0)) < 1e-4 })
     }
 
-    @Test(.enabled(if: FileManager.default.fileExists(
-        atPath: corpusRoot.appendingPathComponent("slicer-projects/FlightScnr.3mf").path)))
+    @Test(.enabled(if: corpusHas("slicer-projects/FlightScnr.3mf")))
     func corpusBambuProjectBuildsFilamentColoredPartsOnPlateHint() throws {
         let url = Self.corpusRoot.appendingPathComponent("slicer-projects/FlightScnr.3mf")
         let scene = SceneBuilder.makeScene(for: try ThreeMFParser().parse(fileAt: url))
@@ -372,8 +425,7 @@ import ThreeMFViewer
         #expect(scene.findEntity(named: "Backdrop") == nil)
     }
 
-    @Test(.enabled(if: FileManager.default.fileExists(
-        atPath: corpusRoot.appendingPathComponent("slicer-projects/synthetic_multiplate.3mf").path)))
+    @Test(.enabled(if: corpusHas("slicer-projects/synthetic_multiplate.3mf")))
     func corpusMultiPlateProjectShowsOnlyTheDefaultPlate() throws {
         let url = Self.corpusRoot.appendingPathComponent("slicer-projects/synthetic_multiplate.3mf")
         let scene = SceneBuilder.makeScene(for: try ThreeMFParser().parse(fileAt: url))

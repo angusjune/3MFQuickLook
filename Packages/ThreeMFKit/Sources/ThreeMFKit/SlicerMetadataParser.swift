@@ -13,9 +13,11 @@ enum SlicerMetadataParser {
     static let modelSettingsPath = "/Metadata/model_settings.config"
     static let projectSettingsPath = "/Metadata/project_settings.config"
 
-    static func parse(package: OPCPackage, rootPartPath: String) -> SlicerProjectInfo? {
+    static func parse(
+        package: OPCPackage, rootPartPath: String, objects: [ObjectResource]
+    ) -> SlicerProjectInfo? {
         guard let settings = package.partDataIfPresent(at: modelSettingsPath),
-              var info = parseModelSettings(settings, rootPartPath: rootPartPath),
+              var info = parseModelSettings(settings, rootPartPath: rootPartPath, objects: objects),
               !info.plates.isEmpty
         else { return nil }
 
@@ -28,7 +30,7 @@ enum SlicerMetadataParser {
     // MARK: model_settings.config (plates, assignments)
 
     private static func parseModelSettings(
-        _ data: Data, rootPartPath: String
+        _ data: Data, rootPartPath: String, objects: [ObjectResource]
     ) -> SlicerProjectInfo? {
         LibXML.withDocument(data) { doc in
             guard let config = xmlDocGetRootElement(doc),
@@ -37,11 +39,13 @@ enum SlicerMetadataParser {
 
             var info = SlicerProjectInfo()
             for object in LibXML.children(of: config, named: "object") {
-                guard let id = LibXML.attribute(of: object, named: "id").flatMap({ UInt32($0) }),
-                      let extruder = metadataValue(of: object, key: "extruder").flatMap({ Int($0) })
+                guard let id = LibXML.attribute(of: object, named: "id").flatMap({ UInt32($0) })
                 else { continue }
                 let ref = ResourceRef(partPath: rootPartPath, id: id)
-                info.filamentIndexByObject[ref] = max(0, extruder - 1)
+                if let extruder = metadataValue(of: object, key: "extruder").flatMap({ Int($0) }) {
+                    info.filamentIndexByObject[ref] = max(0, extruder - 1)
+                }
+                applyPartExtruders(of: object, rootObjectRef: ref, objects: objects, to: &info)
             }
             for (index, plate) in LibXML.children(of: config, named: "plate").enumerated() {
                 let name = metadataValue(of: plate, key: "plater_name")
@@ -58,6 +62,34 @@ enum SlicerMetadataParser {
                         .map(zipAbsolutePartPath)))
             }
             return info
+        }
+    }
+
+    /// Records part-level `extruder` assignments. A `<part id="P">` of
+    /// `<object id="O">` names the component of root object O whose target
+    /// object id is P (the Bambu convention, confirmed against the corpus:
+    /// part ids equal the referenced sub-part object ids).
+    private static func applyPartExtruders(
+        of objectNode: xmlNodePtr,
+        rootObjectRef: ResourceRef,
+        objects: [ObjectResource],
+        to info: inout SlicerProjectInfo
+    ) {
+        var partIndices: [UInt32: Int] = [:]
+        for part in LibXML.children(of: objectNode, named: "part") {
+            guard let id = LibXML.attribute(of: part, named: "id").flatMap({ UInt32($0) }),
+                  let extruder = metadataValue(of: part, key: "extruder").flatMap({ Int($0) })
+            else { continue }
+            partIndices[id] = max(0, extruder - 1)
+        }
+        guard !partIndices.isEmpty,
+              let rootObject = objects.first(where: { $0.ref == rootObjectRef }),
+              case .components(let components) = rootObject.content
+        else { return }
+        for component in components {
+            if let index = partIndices[component.objectRef.id] {
+                info.filamentIndexByObject[component.objectRef] = index
+            }
         }
     }
 
@@ -85,12 +117,12 @@ enum SlicerMetadataParser {
                 type: types.indices.contains(index) ? types[index] : nil)
         }
 
-        info.plateSize = plateSize(fromPrintableArea: settings["printable_area"] as? [String])
+        info.plateRect = plateRect(fromPrintableArea: settings["printable_area"] as? [String])
     }
 
     /// The bounding rectangle of the `printable_area` corner list
     /// (`["0x0", "256x0", …]`, millimeters).
-    private static func plateSize(fromPrintableArea corners: [String]?) -> PlateSize? {
+    private static func plateRect(fromPrintableArea corners: [String]?) -> PlateRect? {
         guard let corners, corners.count >= 3 else { return nil }
         var minX = Float.infinity, maxX = -Float.infinity
         var minY = Float.infinity, maxY = -Float.infinity
@@ -105,6 +137,6 @@ enum SlicerMetadataParser {
             maxY = max(maxY, y)
         }
         guard maxX > minX, maxY > minY else { return nil }
-        return PlateSize(width: maxX - minX, depth: maxY - minY)
+        return PlateRect(origin: SIMD2(minX, minY), width: maxX - minX, depth: maxY - minY)
     }
 }

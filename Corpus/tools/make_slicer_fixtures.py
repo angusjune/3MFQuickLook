@@ -3,10 +3,13 @@
 
 - slicer-projects/synthetic_multiplate.3mf — a Bambu-dialect project with
   THREE plates (plate 1 deliberately empty, plate 2 a cube on extruder 1,
-  plate 3 a pyramid on extruder 2), two filaments (#FF0000 PLA, #00FF00 PETG),
-  and a 180x180 printable_area. Production-extension: each root object is a
-  component reference into its own 3D/Objects/*.model part, mirroring how
-  Bambu Studio packages geometry.
+  plate 3 a two-part object: pyramid on the object-level extruder 2 plus a
+  small cube with a part-level extruder 1 override), two filaments
+  (#FF0000 PLA, #00FF00 PETG), and a 180x180 printable_area.
+  Production-extension: each root object is a component reference into its
+  own 3D/Objects/*.model part, mirroring how Bambu Studio packages geometry
+  (part ids in model_settings.config equal the component target object ids,
+  as in the real corpus files).
 - slicer-projects/synthetic_prusa.3mf — a PrusaSlicer-style project: plain
   core-spec root model plus Metadata/Slic3r_PE*.config parts and NO Bambu
   configs. Must parse as Vanilla-plus (document.slicer == nil).
@@ -64,12 +67,11 @@ def pyramid_mesh_xml(base, height):
     return "\n".join(vs), "\n".join(ts)
 
 
-def object_part(object_id, mesh_xml):
-    vertices, triangles = mesh_xml
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p">
- <resources>
-  <object id="{object_id}" type="model">
+def object_part(*objects):
+    """A production-extension object part holding (object_id, mesh_xml) meshes."""
+    blocks = []
+    for object_id, (vertices, triangles) in objects:
+        blocks.append(f"""  <object id="{object_id}" type="model">
    <mesh>
     <vertices>
 {vertices}
@@ -78,7 +80,12 @@ def object_part(object_id, mesh_xml):
 {triangles}
     </triangles>
    </mesh>
-  </object>
+  </object>""")
+    resources = "\n".join(blocks)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p">
+ <resources>
+{resources}
  </resources>
  <build/>
 </model>
@@ -97,6 +104,7 @@ MULTIPLATE_ROOT_MODEL = """<?xml version="1.0" encoding="UTF-8"?>
   <object id="4" type="model">
    <components>
     <component p:path="/3D/Objects/object_2.model" objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>
+    <component p:path="/3D/Objects/object_2.model" objectid="2" transform="1 0 0 0 1 0 0 0 1 0 0 15"/>
    </components>
   </object>
  </resources>
@@ -124,6 +132,13 @@ MULTIPLATE_MODEL_SETTINGS = """<?xml version="1.0" encoding="UTF-8"?>
   <object id="4">
     <metadata key="name" value="Pyramid"/>
     <metadata key="extruder" value="2"/>
+    <part id="1" subtype="normal_part">
+      <metadata key="name" value="Pyramid"/>
+    </part>
+    <part id="2" subtype="normal_part">
+      <metadata key="name" value="Topper"/>
+      <metadata key="extruder" value="1"/>
+    </part>
   </object>
   <plate>
     <metadata key="plater_id" value="1"/>
@@ -215,8 +230,9 @@ def main():
         ("_rels/.rels", ROOT_RELS),
         ("3D/3dmodel.model", MULTIPLATE_ROOT_MODEL),
         ("3D/_rels/3dmodel.model.rels", MULTIPLATE_MODEL_RELS),
-        ("3D/Objects/object_1.model", object_part(1, cube_mesh_xml(20))),
-        ("3D/Objects/object_2.model", object_part(1, pyramid_mesh_xml(30, 15))),
+        ("3D/Objects/object_1.model", object_part((1, cube_mesh_xml(20)))),
+        ("3D/Objects/object_2.model", object_part(
+            (1, pyramid_mesh_xml(30, 15)), (2, cube_mesh_xml(10)))),
         ("Metadata/model_settings.config", MULTIPLATE_MODEL_SETTINGS),
         ("Metadata/project_settings.config", MULTIPLATE_PROJECT_SETTINGS),
     ])
