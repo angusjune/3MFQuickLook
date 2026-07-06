@@ -1,0 +1,145 @@
+# Release pipeline (ADR-0003): pushing a version tag (v1.2.3) builds a
+# Developer ID-signed, notarized, stapled DMG, attaches it to a GitHub
+# Release, and publishes an EdDSA-signed Sparkle appcast entry to main.
+#
+# Required repository secrets (how to produce each: docs/RELEASING.md):
+#   DEVELOPER_ID_CERT_P12       base64 .p12 with the Developer ID Application
+#                               certificate + private key
+#   DEVELOPER_ID_CERT_PASSWORD  password for the .p12
+#   NOTARY_KEY_ID               App Store Connect API key ID
+#   NOTARY_ISSUER_ID            App Store Connect issuer UUID
+#   NOTARY_PRIVATE_KEY          contents of the App Store Connect API .p8 key
+#   SPARKLE_PRIVATE_KEY         Sparkle EdDSA private key (generate_keys -x)
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write # create the Release; push the appcast commit to main
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  SPARKLE_VERSION: "2.9.4"
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - name: Check required secrets
+        env:
+          DEVELOPER_ID_CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          NOTARY_PRIVATE_KEY: ${{ secrets.NOTARY_PRIVATE_KEY }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          missing=0
+          for name in DEVELOPER_ID_CERT_P12 DEVELOPER_ID_CERT_PASSWORD \
+                      NOTARY_KEY_ID NOTARY_ISSUER_ID NOTARY_PRIVATE_KEY \
+                      SPARKLE_PRIVATE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::missing repository secret: $name (see docs/RELEASING.md)"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the build number is the commit count.
+          fetch-depth: 0
+
+      - name: Select Xcode 26
+        run: |
+          xcode_app="$(find /Applications -maxdepth 1 -name 'Xcode_2[6-9]*.app' | sort -V | tail -n 1)"
+          if [ -z "$xcode_app" ]; then
+            echo "::error::no Xcode 26+ on this runner image; check the macos-15 image manifest"
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode_app/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Import Developer ID certificate
+        env:
+          DEVELOPER_ID_CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: scripts/ci_keychain.sh setup
+
+      - name: Write notarization API key
+        env:
+          NOTARY_PRIVATE_KEY: ${{ secrets.NOTARY_PRIVATE_KEY }}
+        run: |
+          printf '%s\n' "$NOTARY_PRIVATE_KEY" > "$RUNNER_TEMP/notary-key.p8"
+          echo "NOTARY_KEY_FILE=$RUNNER_TEMP/notary-key.p8" >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize, staple, package
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: scripts/release.sh --version "${GITHUB_REF_NAME#v}"
+
+      - name: Sign the update for Sparkle
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/sparkle-dist.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          mkdir -p "$RUNNER_TEMP/sparkle-dist"
+          tar -xf "$RUNNER_TEMP/sparkle-dist.tar.xz" -C "$RUNNER_TEMP/sparkle-dist"
+          # shellcheck disable=SC1091
+          source dist/release-info.env
+          fragment="$(printf '%s\n' "$SPARKLE_PRIVATE_KEY" \
+            | "$RUNNER_TEMP/sparkle-dist/bin/sign_update" --ed-key-file - "$DMG_PATH")"
+          echo "SIGNATURE_FRAGMENT=$fragment" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # shellcheck disable=SC1091
+          source dist/release-info.env
+          gh release create "$GITHUB_REF_NAME" "$DMG_PATH" \
+            --verify-tag \
+            --title "3MF QuickLook $VERSION" \
+            --generate-notes
+
+      - name: Check out main for the appcast
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: appcast-main
+
+      - name: Publish appcast entry
+        run: |
+          # shellcheck disable=SC1091
+          source dist/release-info.env
+          python3 scripts/update_appcast.py \
+            --appcast appcast-main/appcast.xml \
+            --version "$BUILD_NUMBER" \
+            --short-version "$VERSION" \
+            --url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$(basename "$DMG_PATH")" \
+            --link "https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" \
+            --signature-fragment "$SIGNATURE_FRAGMENT" \
+            --minimum-system-version "15.0"
+          cd appcast-main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "Publish appcast entry for $GITHUB_REF_NAME"
+          git push origin main
+
+      - name: Clean up signing keychain
+        if: always()
+        run: scripts/ci_keychain.sh cleanup

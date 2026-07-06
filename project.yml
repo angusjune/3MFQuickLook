@@ -9,6 +9,15 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "15.0"
+    # Notarization requires the hardened runtime; keeping it on everywhere
+    # matches Xcode's default for new projects (debugging still works via the
+    # injected get-task-allow entitlement in Debug).
+    ENABLE_HARDENED_RUNTIME: YES
+    # Local-build defaults. Release builds are stamped by scripts/release.sh
+    # (MARKETING_VERSION = tag without "v", CURRENT_PROJECT_VERSION = commit
+    # count — the monotonically increasing number Sparkle compares).
+    MARKETING_VERSION: "0.0.0"
+    CURRENT_PROJECT_VERSION: "0"
 
 packages:
   ThreeMFKit:
@@ -17,6 +26,9 @@ packages:
     path: Packages/ThreeMFViewer
   HostAppKit:
     path: Packages/HostAppKit
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.9.4
 
 targets:
   ThreeMFQuickLook:
@@ -31,6 +43,7 @@ targets:
       - package: ThreeMFKit
       - package: ThreeMFViewer
       - package: HostAppKit
+      - package: Sparkle
       - target: PreviewExt
         embed: true
       - target: ThumbExt
@@ -38,16 +51,29 @@ targets:
     entitlements:
       path: App/App.entitlements
       properties:
-        # The Host App is deliberately NOT sandboxed (ADR-0003): pkd refuses
+        # The Host App is deliberately NOT sandboxed (ADR-0004): pkd refuses
         # PluginKit discovery to sandboxed callers, and onboarding's extension
         # status detection depends on it. Both extensions stay sandboxed.
+        # Unsandboxed, Sparkle needs none of its sandbox workarounds; if this
+        # ever flips back to true, also restore network-client, the -spks/-spki
+        # mach-lookup exceptions, and SUEnableInstallerLauncherService
+        # (https://sparkle-project.org/documentation/sandboxing/).
         com.apple.security.app-sandbox: false
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 3MF QuickLook
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSPrincipalClass: NSApplication
         LSApplicationCategoryType: public.app-category.utilities
+        # Sparkle 2 auto-update (ADR-0003): EdDSA-signed appcast served from
+        # the repository; releases attach the DMG the enclosure points at.
+        SUFeedURL: https://raw.githubusercontent.com/angusjune/3MFQuickLook/main/appcast.xml
+        # REQUIRED before the first release: the EdDSA public key printed by
+        # Sparkle's `generate_keys` (see docs/RELEASING.md). scripts/release.sh
+        # refuses to cut a real release while this is empty.
+        SUPublicEDKey: ""
         # Required for the Preview Extension: Quick Look only consults a
         # preview appex for types its containing app declares as openable
         # document types (walking-skeleton finding — removing this silently

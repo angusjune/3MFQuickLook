@@ -18,6 +18,7 @@ struct ThreeMFQuickLookApp: App {
                     OnboardingWindowController.shared.show()
                 }
             }
+            UpdaterCommands()  // Sparkle auto-update; see CheckForUpdates.swift
         }
     }
 }
