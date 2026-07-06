@@ -6,3 +6,7 @@ Every existing third-party 3D Quick Look plugin we know of uses SceneKit, but Sc
 
 - **SceneKit** — free arcball camera, trivial offscreen snapshots, runs on macOS 13+. Rejected: deprecated; guaranteed rewrite later.
 - **Custom Metal** — no deprecation risk, best control over huge meshes. Rejected: hand-rolling cameras, lighting, and thumbnail rendering is weeks of work RealityKit provides for free.
+
+## Amendment (2026-07-06)
+
+The interactivity prototype showed each built-in `CameraControls` mode maps only a single drag gesture — there is no scroll/pinch zoom and no combined mode. The Viewer therefore implements its own camera rig (drag = orbit, scroll/pinch = zoom, secondary drag = pan) on top of `RealityView`; the rest of this decision stands.

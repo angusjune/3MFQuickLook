@@ -1,0 +1,134 @@
+name: ThreeMFQuickLook
+options:
+  bundleIdPrefix: com.angusjune
+  deploymentTarget:
+    macOS: "15.0"
+settings:
+  base:
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+
+packages:
+  ThreeMFKit:
+    path: Packages/ThreeMFKit
+  ThreeMFViewer:
+    path: Packages/ThreeMFViewer
+
+targets:
+  ThreeMFQuickLook:
+    type: application
+    platform: macOS
+    sources: [App]
+    settings:
+      base:
+        PRODUCT_NAME: 3MF QuickLook
+        PRODUCT_MODULE_NAME: ThreeMFQuickLook
+    dependencies:
+      - package: ThreeMFKit
+      - package: ThreeMFViewer
+      - target: PreviewExt
+        embed: true
+      - target: ThumbExt
+        embed: true
+    entitlements:
+      path: App/App.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: 3MF QuickLook
+        NSPrincipalClass: NSApplication
+        LSApplicationCategoryType: public.app-category.utilities
+        # Required for the Preview Extension: Quick Look only consults a
+        # preview appex for types its containing app declares as openable
+        # document types (walking-skeleton finding — removing this silently
+        # disables spacebar previews while thumbnails keep working).
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: 3MF Package
+            LSItemContentTypes: [com.angusjune.threemf]
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+        # Our own namespaced identifier for .3mf (we import the format but own
+        # this identifier). Deliberately digit-free and NOT conforming to
+        # public.3d-content: that conformance can route the Quick Look panel to
+        # the system's built-in 3D (USDZ) presentation instead of our
+        # Preview Extension.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.angusjune.threemf
+            UTTypeDescription: 3D Manufacturing Format package
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [3mf]
+              public.mime-type: [model/3mf]
+
+  PreviewExt:
+    type: app-extension
+    platform: macOS
+    sources: [PreviewExt]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.angusjune.ThreeMFQuickLook.PreviewExt
+    dependencies:
+      - package: ThreeMFKit
+      - package: ThreeMFViewer
+    entitlements:
+      path: PreviewExt/PreviewExt.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    info:
+      path: PreviewExt/Info.plist
+      properties:
+        CFBundleDisplayName: 3MF QuickLook Preview
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.quicklook.preview
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PreviewViewController
+          NSExtensionAttributes:
+            QLSupportedContentTypes: [com.angusjune.threemf]
+            QLSupportsSearchableItems: false
+
+  ThumbExt:
+    type: app-extension
+    platform: macOS
+    sources: [ThumbExt]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.angusjune.ThreeMFQuickLook.ThumbExt
+    dependencies:
+      - package: ThreeMFKit
+      - package: ThreeMFViewer
+    entitlements:
+      path: ThumbExt/ThumbExt.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    info:
+      path: ThumbExt/Info.plist
+      properties:
+        CFBundleDisplayName: 3MF QuickLook Thumbnails
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.quicklook.thumbnail
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ThumbnailProvider
+          NSExtensionAttributes:
+            QLSupportedContentTypes: [com.angusjune.threemf]
+            QLThumbnailMinimumDimension: 0
+
+  # No dependency on the app target: that would make XcodeGen set TEST_HOST
+  # and run these tests inside the app. They must run as a standalone runner
+  # (the scheme builds the app first; the test launches it itself).
+  SmokeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [SmokeTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  ThreeMFQuickLook:
+    build:
+      targets:
+        ThreeMFQuickLook: all
+    test:
+      targets: [SmokeTests]
