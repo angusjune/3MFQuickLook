@@ -34,6 +34,14 @@ final class OPCPackage {
         }
     }
 
+    init(data: Data) throws {
+        do {
+            archive = try Archive(data: data, accessMode: .read)
+        } catch {
+            throw ThreeMFParseError.unreadableArchive(String(describing: error))
+        }
+    }
+
     /// Streams the raw bytes of a part to `consumer` in chunks.
     /// `partPath` is zip-absolute ("/3D/3dmodel.model").
     func streamPart(at partPath: String, consumer: (Data) throws -> Void) throws {
