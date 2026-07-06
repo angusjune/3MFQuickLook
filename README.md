@@ -4,12 +4,16 @@ Quick Look previews and Finder thumbnails for `.3mf` files on macOS 15+.
 Press Space on a 3MF file and get an interactive 3D preview; folders of models
 get real thumbnails instead of blank icons.
 
-**Status: vanilla 3MF end-to-end.** Core-spec parsing (plus the materials and
-production extensions) renders real geometry with file colors: spacebar
-previews are interactive (drag = orbit, scroll/pinch = zoom, secondary
-drag = pan) and Finder thumbnails are true offscreen renders. Slicer-project
-metadata (plates, filaments) lands next
-([issue #4](https://github.com/angusjune/3MFQuickLook/issues/4)).
+**Status: Slicer Projects preview like the slicer.** Core-spec parsing (plus
+the materials and production extensions) renders real geometry with file
+colors: spacebar previews are interactive (drag = orbit, scroll/pinch = zoom,
+secondary drag = pan) and Finder thumbnails are true offscreen renders. Bambu
+Studio / OrcaSlicer projects show their parts in assigned filament colors on a
+flat plate hint at the true plate size, defaulting to the first Build Plate
+that has objects (all plates are parsed; browsing lands with the Plate
+Filmstrip, [issue #6](https://github.com/angusjune/3MFQuickLook/issues/6)).
+PrusaSlicer projects preview as vanilla-plus. Embedded-thumbnail instant first
+paint lands next ([issue #5](https://github.com/angusjune/3MFQuickLook/issues/5)).
 
 ## Layout
 
