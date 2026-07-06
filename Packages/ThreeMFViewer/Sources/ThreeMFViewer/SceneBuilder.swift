@@ -18,7 +18,12 @@ public enum SceneBuilder {
         let model = makeModelSubtree(for: document)
         root.addChild(model)
         root.addChild(makeLighting())
-        if let backdrop = makeBackdrop(beneath: model) {
+        // Slicer Projects sit on a plate hint at the true plate size; Vanilla
+        // files (and projects whose metadata lacks a plate size) keep the
+        // Apple-minimal backdrop.
+        if let hint = makePlateHint(for: document, beneath: model) {
+            root.addChild(hint)
+        } else if let backdrop = makeBackdrop(beneath: model) {
             root.addChild(backdrop)
         }
         return root
@@ -51,32 +56,61 @@ public enum SceneBuilder {
 
         // Lenient fallback: a file without build items still shows its mesh
         // objects.
-        let items = document.buildItems.isEmpty
+        let allItems = document.buildItems.isEmpty
             ? document.objects.compactMap { object -> BuildItem? in
                 guard case .mesh = object.content else { return nil }
                 return BuildItem(objectRef: object.ref)
             }
             : document.buildItems
+        let items = defaultPlateItems(of: allItems, slicer: document.slicer)
 
         for item in items {
             guard let object = objectsByRef[item.objectRef] else { continue }
-            let entity = makeEntity(for: object, objectsByRef: objectsByRef, visited: [])
+            let entity = makeEntity(
+                for: object,
+                objectsByRef: objectsByRef,
+                visited: [],
+                filamentColor: filamentColor(of: item.objectRef, in: document.slicer))
             entity.transform = Transform(matrix: item.transform)
             model.addChild(entity)
         }
         return model
     }
 
+    /// The build items the preview stages: for a Slicer Project, the default
+    /// Plate's (the first with objects); everything otherwise — including when
+    /// the plate assignments match no build item (lenient: a broken config
+    /// must not empty the preview).
+    private static func defaultPlateItems(of items: [BuildItem], slicer: SlicerProjectInfo?) -> [BuildItem] {
+        guard let plate = slicer?.defaultPlate, !plate.objectRefs.isEmpty else { return items }
+        let assigned = Set(plate.objectRefs)
+        let plateItems = items.filter { assigned.contains($0.objectRef) }
+        return plateItems.isEmpty ? items : plateItems
+    }
+
+    /// The filament color a Slicer Project assigns the object: its extruder's
+    /// filament, or filament 0 when the object has no explicit assignment.
+    private static func filamentColor(of ref: ResourceRef, in slicer: SlicerProjectInfo?) -> ColorRGBA? {
+        guard let slicer, !slicer.filaments.isEmpty else { return nil }
+        let index = slicer.filamentIndexByObject[ref] ?? 0
+        let filament = slicer.filaments.indices.contains(index)
+            ? slicer.filaments[index] : slicer.filaments[0]
+        return filament.color
+    }
+
     @MainActor
     private static func makeEntity(
         for object: ObjectResource,
         objectsByRef: [ResourceRef: ObjectResource],
-        visited: Set<ResourceRef>
+        visited: Set<ResourceRef>,
+        filamentColor: ColorRGBA? = nil
     ) -> Entity {
         guard !visited.contains(object.ref) else { return Entity() }
         switch object.content {
         case .mesh(let mesh):
-            return makeMeshEntity(mesh, name: object.name, color: object.defaultColor)
+            // The slicer's plate view shows parts in their filament color, so
+            // it wins over any CAD material color the mesh carries.
+            return makeMeshEntity(mesh, name: object.name, color: filamentColor ?? object.defaultColor)
         case .components(let components):
             let parent = Entity()
             parent.name = object.name ?? ""
@@ -85,7 +119,8 @@ public enum SceneBuilder {
                 let child = makeEntity(
                     for: target,
                     objectsByRef: objectsByRef,
-                    visited: visited.union([object.ref]))
+                    visited: visited.union([object.ref]),
+                    filamentColor: filamentColor)
                 child.transform = Transform(matrix: component.transform)
                 parent.addChild(child)
             }
@@ -213,6 +248,71 @@ public enum SceneBuilder {
         lighting.addChild(rim)
 
         return lighting
+    }
+
+    /// A flat plate outline at the Slicer Project's true plate size: a thin
+    /// bed surface with a border ring inset along its edge, built in model
+    /// space (mm, Z-up) under the same units conversion as the Model subtree.
+    ///
+    /// Placed at the model-space origin, where slicer bed coordinates start —
+    /// unless the geometry doesn't fit there (multi-plate global coordinates),
+    /// in which case it centers under the geometry instead.
+    @MainActor
+    private static func makePlateHint(for document: ThreeMFDocument, beneath model: Entity) -> Entity? {
+        guard let size = document.slicer?.plateSize else { return nil }
+
+        let hint = Entity()
+        hint.name = "PlateHint"
+        hint.transform = model.transform
+
+        let surfaceThickness: Float = 0.4
+        let line = max(size.width, size.depth) * 0.01
+
+        let surface = ModelEntity(
+            mesh: .generateBox(size: SIMD3(size.width, size.depth, surfaceThickness)),
+            materials: [SimpleMaterial(
+                color: NSColor(srgbRed: 0.93, green: 0.93, blue: 0.94, alpha: 1),
+                roughness: 1, isMetallic: false)])
+        // Top face just below the bed plane so flat-bottomed parts don't
+        // z-fight it.
+        surface.position = SIMD3(size.width / 2, size.depth / 2, -surfaceThickness / 2 - 0.05)
+        hint.addChild(surface)
+
+        let borderMaterial = SimpleMaterial(
+            color: NSColor(srgbRed: 0.68, green: 0.68, blue: 0.70, alpha: 1),
+            roughness: 0.9, isMetallic: false)
+        let edges: [(SIMD2<Float>, SIMD2<Float>)] = [
+            (SIMD2(size.width, line), SIMD2(size.width / 2, line / 2)),
+            (SIMD2(size.width, line), SIMD2(size.width / 2, size.depth - line / 2)),
+            (SIMD2(line, size.depth - 2 * line), SIMD2(line / 2, size.depth / 2)),
+            (SIMD2(line, size.depth - 2 * line), SIMD2(size.width - line / 2, size.depth / 2)),
+        ]
+        for (extent, center) in edges {
+            let edge = ModelEntity(
+                mesh: .generateBox(size: SIMD3(extent.x, extent.y, surfaceThickness)),
+                materials: [borderMaterial])
+            edge.position = SIMD3(center.x, center.y, -surfaceThickness / 2)
+            hint.addChild(edge)
+        }
+
+        // Slicer bed coordinates start at the model-space origin; fall back to
+        // centering when the build sits elsewhere (multi-plate global space).
+        let bounds = model.visualBounds(relativeTo: nil)
+        if bounds.extents.max() > 0 {
+            let scale = document.unit.metersPerUnit
+            let minX = bounds.min.x / scale, maxX = bounds.max.x / scale
+            let minY = -bounds.max.z / scale, maxY = -bounds.min.z / scale
+            let tolerance: Float = 1
+            let fitsAtOrigin = minX >= -tolerance && maxX <= size.width + tolerance
+                && minY >= -tolerance && maxY <= size.depth + tolerance
+            if !fitsAtOrigin {
+                for child in hint.children {
+                    child.position.x += (minX + maxX - size.width) / 2
+                    child.position.y += (minY + maxY - size.depth) / 2
+                }
+            }
+        }
+        return hint
     }
 
     /// A rounded neutral platform just beneath the model, catching the key

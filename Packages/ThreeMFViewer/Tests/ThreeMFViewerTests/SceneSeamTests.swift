@@ -202,6 +202,124 @@ import ThreeMFViewer
         #expect(tints.contains { simd_distance($0, SIMD3(0, 0, 1)) < 0.02 })
     }
 
+    // MARK: Slicer Projects
+
+    /// Two mesh objects (ids 1, 2) with build items, wrapped in slicer info:
+    /// filaments red + green, object 1 → extruder 1, object 2 → extruder 2.
+    private static func slicerDocument(
+        plates: [Plate]? = nil,
+        plateSize: PlateSize? = PlateSize(width: 180, depth: 180)
+    ) -> ThreeMFDocument {
+        let refs = [ResourceRef(partPath: rootPart, id: 1), ResourceRef(partPath: rootPart, id: 2)]
+        var itemTransform = matrix_identity_float4x4
+        itemTransform.columns.3 = SIMD4(100, 100, 0, 1)
+        var doc = document(
+            objects: refs.map { ObjectResource(ref: $0, content: .mesh(cubeMesh())) },
+            buildItems: [
+                BuildItem(objectRef: refs[0]),
+                BuildItem(objectRef: refs[1], transform: itemTransform),
+            ])
+        doc.slicer = SlicerProjectInfo(
+            filaments: [
+                Filament(color: ColorRGBA(red: 255, green: 0, blue: 0), type: "PLA"),
+                Filament(color: ColorRGBA(red: 0, green: 255, blue: 0), type: "PETG"),
+            ],
+            plates: plates ?? [Plate(id: 1, objectRefs: refs)],
+            filamentIndexByObject: [refs[0]: 0, refs[1]: 1],
+            plateSize: plateSize)
+        return doc
+    }
+
+    @Test func slicerProjectMapsFilamentColorsToPartMaterials() throws {
+        let scene = SceneBuilder.makeScene(for: Self.slicerDocument())
+
+        let models = modelEntities(in: try modelSubtree(of: scene))
+        #expect(models.count == 2)
+        let tints = try models.map { try tint(of: try #require($0.model?.materials.first)) }
+        #expect(tints.contains { simd_distance($0, SIMD3(1, 0, 0)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(0, 1, 0)) < 0.02 })
+    }
+
+    @Test func filamentColorFlowsThroughComponentsToUncoloredMeshes() throws {
+        // Bambu packages wrap every mesh in a root component object; the root
+        // object's filament assignment must color the referenced mesh.
+        let meshRef = ResourceRef(partPath: "/3D/Objects/object_1.model", id: 1)
+        let wrapperRef = ResourceRef(partPath: Self.rootPart, id: 2)
+        var doc = Self.document(
+            objects: [
+                ObjectResource(ref: meshRef, content: .mesh(Self.cubeMesh())),
+                ObjectResource(ref: wrapperRef, content: .components([
+                    Component(objectRef: meshRef)
+                ])),
+            ],
+            buildItems: [BuildItem(objectRef: wrapperRef)])
+        doc.slicer = SlicerProjectInfo(
+            filaments: [Filament(color: ColorRGBA(red: 0, green: 0, blue: 255), type: "PLA")],
+            plates: [Plate(id: 1, objectRefs: [wrapperRef])],
+            filamentIndexByObject: [wrapperRef: 0],
+            plateSize: PlateSize(width: 256, depth: 256))
+
+        let scene = SceneBuilder.makeScene(for: doc)
+        let model = try #require(modelEntities(in: try modelSubtree(of: scene)).first)
+        let tint = try tint(of: try #require(model.model?.materials.first))
+        #expect(simd_distance(tint, SIMD3(0, 0, 1)) < 0.02)
+    }
+
+    @Test func slicerProjectShowsPlateHintAtTruePlateSizeInsteadOfBackdrop() throws {
+        let scene = SceneBuilder.makeScene(for: Self.slicerDocument())
+
+        let hint = try #require(scene.findEntity(named: "PlateHint"))
+        // 180×180 mm at millimeter scale → 0.18×0.18 m in world space, flat.
+        let extents = hint.visualBounds(relativeTo: nil).extents
+        #expect(abs(extents.x - 0.18) < 1e-4)
+        #expect(abs(extents.z - 0.18) < 1e-4)
+        #expect(extents.y < 0.005)
+        // The hint tops out at the bed plane (world y = 0), beneath the model.
+        #expect(hint.visualBounds(relativeTo: nil).max.y <= 1e-4)
+
+        #expect(scene.findEntity(named: "Backdrop") == nil)
+    }
+
+    @Test func sceneDefaultsToTheFirstPlateThatHasObjects() throws {
+        // Plate 1 is empty; plate 2 holds only object 1 (red). Object 2's
+        // build item must not be staged.
+        let refs = [ResourceRef(partPath: Self.rootPart, id: 1), ResourceRef(partPath: Self.rootPart, id: 2)]
+        let doc = Self.slicerDocument(plates: [
+            Plate(id: 1),
+            Plate(id: 2, objectRefs: [refs[0]]),
+            Plate(id: 3, objectRefs: [refs[1]]),
+        ])
+
+        let scene = SceneBuilder.makeScene(for: doc)
+        let models = modelEntities(in: try modelSubtree(of: scene))
+        #expect(models.count == 1)
+        let tint = try tint(of: try #require(models.first?.model?.materials.first))
+        #expect(simd_distance(tint, SIMD3(1, 0, 0)) < 0.02)
+    }
+
+    @Test func plateAssignmentsThatMatchNoBuildItemFallBackToTheWholeBuild() throws {
+        // Defensive: a config referencing unknown objects must not empty the
+        // preview.
+        let doc = Self.slicerDocument(plates: [
+            Plate(id: 1, objectRefs: [ResourceRef(partPath: Self.rootPart, id: 99)]),
+        ])
+
+        let scene = SceneBuilder.makeScene(for: doc)
+        #expect(modelEntities(in: try modelSubtree(of: scene)).count == 2)
+    }
+
+    @Test func vanillaSceneHasNoPlateHint() throws {
+        let scene = SceneBuilder.makeScene(for: Self.cubeDocument())
+        #expect(scene.findEntity(named: "PlateHint") == nil)
+        #expect(scene.findEntity(named: "Backdrop") != nil)
+    }
+
+    @Test func slicerProjectWithoutPlateSizeKeepsTheBackdrop() throws {
+        let scene = SceneBuilder.makeScene(for: Self.slicerDocument(plateSize: nil))
+        #expect(scene.findEntity(named: "PlateHint") == nil)
+        #expect(scene.findEntity(named: "Backdrop") != nil)
+    }
+
     // MARK: Corpus-driven (file → document → entity tree)
 
     nonisolated private static let corpusRoot = URL(fileURLWithPath: #filePath)
@@ -229,6 +347,44 @@ import ThreeMFViewer
         // The tetra's build item carries the 30 mm X translation.
         let translations = entities.map { $0.position(relativeTo: model) }
         #expect(translations.contains { simd_distance($0, SIMD3(30, 0, 0)) < 1e-4 })
+    }
+
+    @Test(.enabled(if: FileManager.default.fileExists(
+        atPath: corpusRoot.appendingPathComponent("slicer-projects/FlightScnr.3mf").path)))
+    func corpusBambuProjectBuildsFilamentColoredPartsOnPlateHint() throws {
+        let url = Self.corpusRoot.appendingPathComponent("slicer-projects/FlightScnr.3mf")
+        let scene = SceneBuilder.makeScene(for: try ThreeMFParser().parse(fileAt: url))
+
+        // Three parts, all on extruder 1 → filament #000000 (ground truth:
+        // unzip dumps of the config parts).
+        let entities = modelEntities(in: try modelSubtree(of: scene))
+        #expect(entities.count == 3)
+        for entity in entities {
+            let tint = try tint(of: try #require(entity.model?.materials.first))
+            #expect(simd_distance(tint, SIMD3(0, 0, 0)) < 0.02)
+        }
+
+        // printable_area 256×256 mm → 0.256 m plate hint; no round backdrop.
+        let hint = try #require(scene.findEntity(named: "PlateHint"))
+        let extents = hint.visualBounds(relativeTo: nil).extents
+        #expect(abs(extents.x - 0.256) < 1e-4)
+        #expect(abs(extents.z - 0.256) < 1e-4)
+        #expect(scene.findEntity(named: "Backdrop") == nil)
+    }
+
+    @Test(.enabled(if: FileManager.default.fileExists(
+        atPath: corpusRoot.appendingPathComponent("slicer-projects/synthetic_multiplate.3mf").path)))
+    func corpusMultiPlateProjectShowsOnlyTheDefaultPlate() throws {
+        let url = Self.corpusRoot.appendingPathComponent("slicer-projects/synthetic_multiplate.3mf")
+        let scene = SceneBuilder.makeScene(for: try ThreeMFParser().parse(fileAt: url))
+
+        // Plate 1 is empty → plate 2 (the cube on extruder 1, #FF0000) is the
+        // default; the pyramid on plate 3 must not be staged.
+        let entities = modelEntities(in: try modelSubtree(of: scene))
+        let parts = entities.filter { $0.model != nil }
+        #expect(parts.count == 1)
+        let tint = try tint(of: try #require(parts.first?.model?.materials.first))
+        #expect(simd_distance(tint, SIMD3(1, 0, 0)) < 0.02)
     }
 
     // MARK: Staging
