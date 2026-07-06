@@ -18,16 +18,31 @@ public struct PluginKitProbe: ExtensionStatusProbing {
     }
 
     private func enablement(ofIdentifier identifier: String) async -> ExtensionEnablement {
-        guard let output = await Self.pluginKitMatchOutput(forIdentifier: identifier) else {
+        guard let result = await Self.runPluginKitMatch(forIdentifier: identifier) else {
             return .unknown
         }
+        return Self.interpret(
+            exitStatus: result.exitStatus, output: result.output, forIdentifier: identifier)
+    }
+
+    /// Maps one `pluginkit -m -i <identifier>` run to an enablement.
+    ///
+    /// A clean exit with no output is how pluginkit reports "not registered";
+    /// a failure exit means the query itself was refused — notably, pkd denies
+    /// discovery to sandboxed callers ("unauthorized discovery flag") — which
+    /// must read as "couldn't determine", never as "not registered".
+    public static func interpret(
+        exitStatus: Int32,
+        output: String,
+        forIdentifier identifier: String
+    ) -> ExtensionEnablement {
+        guard exitStatus == 0 else { return .unknown }
         return PluginKitElection.enablement(ofIdentifier: identifier, inMatchOutput: output)
     }
 
-    /// The raw stdout of `pluginkit -m -i <identifier>`, or nil if the query
-    /// could not run at all. An unregistered identifier legitimately produces
-    /// empty output, which the election parser reports as `.notRegistered`.
-    private static func pluginKitMatchOutput(forIdentifier identifier: String) async -> String? {
+    private static func runPluginKitMatch(
+        forIdentifier identifier: String
+    ) async -> (exitStatus: Int32, output: String)? {
         await withCheckedContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/pluginkit")
@@ -39,7 +54,9 @@ public struct PluginKitProbe: ExtensionStatusProbing {
                 // far below the pipe buffer, so reading after exit is safe.
                 let data = (process.standardOutput as? Pipe)?
                     .fileHandleForReading.readDataToEndOfFile() ?? Data()
-                continuation.resume(returning: String(data: data, encoding: .utf8) ?? "")
+                continuation.resume(returning: (
+                    exitStatus: process.terminationStatus,
+                    output: String(data: data, encoding: .utf8) ?? ""))
             }
             do {
                 try process.run()

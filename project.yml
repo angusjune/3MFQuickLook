@@ -38,7 +38,10 @@ targets:
     entitlements:
       path: App/App.entitlements
       properties:
-        com.apple.security.app-sandbox: true
+        # The Host App is deliberately NOT sandboxed (ADR-0003): pkd refuses
+        # PluginKit discovery to sandboxed callers, and onboarding's extension
+        # status detection depends on it. Both extensions stay sandboxed.
+        com.apple.security.app-sandbox: false
     info:
       path: App/Info.plist
       properties:
