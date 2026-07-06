@@ -103,10 +103,13 @@ public enum SceneBuilder {
         descriptor.normals = MeshBuffer(computedNormals(positions: mesh.positions, indices: indices))
         descriptor.primitives = .triangles(indices)
 
+        // Triangles without a per-triangle color (nil) render in the object's
+        // color, so partially painted meshes keep both their paint and base.
+        let objectNSColor = color.map(nsColor) ?? neutralColor
         let materials: [any RealityKit.Material]
         if let triangleColors = mesh.triangleColors, triangleColors.count * 3 == indices.count {
-            var order: [ColorRGBA] = []
-            var indexOfColor: [ColorRGBA: UInt32] = [:]
+            var order: [ColorRGBA?] = []
+            var indexOfColor: [ColorRGBA?: UInt32] = [:]
             var faceMaterials: [UInt32] = []
             faceMaterials.reserveCapacity(triangleColors.count)
             for color in triangleColors {
@@ -120,10 +123,10 @@ public enum SceneBuilder {
                 }
             }
             descriptor.materials = .perFace(faceMaterials)
-            materials = order.map { material(for: nsColor($0)) }
+            materials = order.map { material(for: $0.map(nsColor) ?? objectNSColor) }
         } else {
             descriptor.materials = .allFaces(0)
-            materials = [material(for: color.map(nsColor) ?? neutralColor)]
+            materials = [material(for: objectNSColor)]
         }
 
         guard let resource = try? MeshResource.generate(from: [descriptor]) else {

@@ -46,12 +46,14 @@ struct ModelPart {
         }
     }
 
-    /// Per-triangle colors, materialized only when every triangle resolves one
-    /// (falling back to the object color for triangles without properties).
-    private func resolvedTriangleColors(of raw: RawObject, defaultColor: ColorRGBA?) -> [ColorRGBA]? {
+    /// Per-triangle colors, materialized when at least one triangle resolves
+    /// one. Triangles without a resolvable color get nil (they render in the
+    /// object's color), so partially painted meshes keep their paint.
+    private func resolvedTriangleColors(of raw: RawObject, defaultColor: ColorRGBA?) -> [ColorRGBA?]? {
         guard raw.hasTriangleProperties else { return nil }
-        var colors: [ColorRGBA] = []
+        var colors: [ColorRGBA?] = []
         colors.reserveCapacity(raw.indices.count / 3)
+        var anyResolved = false
         for i in 0..<(raw.indices.count / 3) {
             let pid = raw.triPropertyGroups[i] == Self.noProperty ? raw.pid : raw.triPropertyGroups[i]
             let index = raw.triPropertyIndices[i]
@@ -59,10 +61,10 @@ struct ModelPart {
             if index != Self.noProperty, let pid, let group = propertyColors[pid] {
                 color = group.indices.contains(Int(index)) ? group[Int(index)] : group.first
             }
-            guard let resolved = color ?? defaultColor else { return nil }
-            colors.append(resolved)
+            anyResolved = anyResolved || color != nil
+            colors.append(color ?? defaultColor)
         }
-        return colors
+        return anyResolved ? colors : nil
     }
 
     func buildItems() -> [BuildItem] {
@@ -261,7 +263,7 @@ final class ModelPartSAXParser {
             stack.append(.skip)
         case .components:
             if matches(name, "component"), inNS(uri, Self.coreNS), let objectID = attrs.uint("objectid") {
-                let path = attrs.string("path").map(Self.normalizedPartPath)
+                let path = attrs.string("path").map(zipAbsolutePartPath)
                 if let path { part.referencedPartPaths.append(path) }
                 currentObject?.components.append(RawComponent(
                     objectID: objectID,
@@ -281,7 +283,7 @@ final class ModelPartSAXParser {
             stack.append(.skip)
         case .build:
             if matches(name, "item"), inNS(uri, Self.coreNS), let objectID = attrs.uint("objectid") {
-                let path = attrs.string("path").map(Self.normalizedPartPath)
+                let path = attrs.string("path").map(zipAbsolutePartPath)
                 if let path { part.referencedPartPaths.append(path) }
                 part.rawItems.append(RawItem(
                     objectID: objectID,
@@ -342,20 +344,19 @@ final class ModelPartSAXParser {
     // MARK: Name/namespace matching (no per-call allocation)
 
     private func matches(_ name: UnsafePointer<xmlChar>, _ literal: StaticString) -> Bool {
-        literal.withUTF8Buffer { buffer in
-            memcmp(name, buffer.baseAddress!, buffer.count) == 0 && name[buffer.count] == 0
-        }
+        xmlStringEquals(name, literal)
     }
 
     private func inNS(_ uri: UnsafePointer<xmlChar>?, _ literal: StaticString) -> Bool {
         guard let uri else { return false }
-        return literal.withUTF8Buffer { buffer in
-            memcmp(uri, buffer.baseAddress!, buffer.count) == 0 && uri[buffer.count] == 0
-        }
+        return xmlStringEquals(uri, literal)
     }
+}
 
-    private static func normalizedPartPath(_ path: String) -> String {
-        path.hasPrefix("/") ? path : "/" + path
+/// NUL-terminated xmlChar string == StaticString, without allocating.
+private func xmlStringEquals(_ string: UnsafePointer<xmlChar>, _ literal: StaticString) -> Bool {
+    literal.withUTF8Buffer { buffer in
+        memcmp(string, buffer.baseAddress!, buffer.count) == 0 && string[buffer.count] == 0
     }
 }
 
@@ -371,10 +372,7 @@ private struct SAXAttributes {
         guard let base else { return nil }
         for i in 0..<count {
             guard let localname = base[i * 5] else { continue }
-            let matches = name.withUTF8Buffer { buffer in
-                memcmp(localname, buffer.baseAddress!, buffer.count) == 0 && localname[buffer.count] == 0
-            }
-            if matches, let start = base[i * 5 + 3], let end = base[i * 5 + 4] {
+            if xmlStringEquals(localname, name), let start = base[i * 5 + 3], let end = base[i * 5 + 4] {
                 return (start, end - start)
             }
         }

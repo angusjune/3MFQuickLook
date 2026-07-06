@@ -77,13 +77,14 @@ public struct Mesh: Equatable, Sendable {
     public var positions: [SIMD3<Float>]
     public var triangleIndices: [UInt32]
     /// Per-triangle colors resolved from triangle-level property references
-    /// (`pid`/`p1`), when any triangle carries one; nil otherwise. Count
-    /// matches `triangleCount` when present.
-    public var triangleColors: [ColorRGBA]?
+    /// (`pid`/`p1`). Present when at least one triangle resolves a color;
+    /// entries are nil for triangles without one (partially painted meshes),
+    /// which render in the object's color. Count matches `triangleCount`.
+    public var triangleColors: [ColorRGBA?]?
 
     public var triangleCount: Int { triangleIndices.count / 3 }
 
-    public init(positions: [SIMD3<Float>] = [], triangleIndices: [UInt32] = [], triangleColors: [ColorRGBA]? = nil) {
+    public init(positions: [SIMD3<Float>] = [], triangleIndices: [UInt32] = [], triangleColors: [ColorRGBA?]? = nil) {
         self.positions = positions
         self.triangleIndices = triangleIndices
         self.triangleColors = triangleColors

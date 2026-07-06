@@ -3,7 +3,7 @@ import RealityKit
 import simd
 import Testing
 import ThreeMFKit
-@testable import ThreeMFViewer
+import ThreeMFViewer
 
 /// Scene-seam tests: given a document, the entity tree has these entities,
 /// transforms, and materials. Headless — no pixel assertions.
@@ -17,7 +17,7 @@ import ThreeMFKit
     /// A unit cube mesh: 8 vertices, 12 triangles.
     private static func cubeMesh(
         size: Float = 10,
-        triangleColors: [ColorRGBA]? = nil
+        triangleColors: [ColorRGBA?]? = nil
     ) -> Mesh {
         var positions: [SIMD3<Float>] = []
         for z: Float in [0, 1] {
@@ -44,7 +44,7 @@ import ThreeMFKit
 
     private static func cubeDocument(
         defaultColor: ColorRGBA? = nil,
-        triangleColors: [ColorRGBA]? = nil,
+        triangleColors: [ColorRGBA?]? = nil,
         itemTransform: simd_float4x4 = matrix_identity_float4x4
     ) -> ThreeMFDocument {
         let ref = ResourceRef(partPath: rootPart, id: 1)
@@ -185,6 +185,50 @@ import ThreeMFKit
             sum + m.parts.reduce(0) { $0 + ($1.triangleIndices?.count ?? 0) / 3 }
         }
         #expect(triangleTotal == 12)
+    }
+
+    @Test func partiallyPaintedTrianglesFallBackToTheObjectColor() throws {
+        let red = ColorRGBA(red: 255, green: 0, blue: 0)
+        let blue = ColorRGBA(red: 0, green: 0, blue: 255)
+        let colors: [ColorRGBA?] = Array(repeating: red, count: 6) + Array(repeating: nil, count: 6)
+        let scene = SceneBuilder.makeScene(
+            for: Self.cubeDocument(defaultColor: blue, triangleColors: colors))
+
+        let model = try #require(modelEntities(in: try modelSubtree(of: scene)).first)
+        let materials = try #require(model.model?.materials)
+        #expect(materials.count == 2)
+        let tints = try materials.map { try tint(of: $0) }
+        #expect(tints.contains { simd_distance($0, SIMD3(1, 0, 0)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(0, 0, 1)) < 0.02 })
+    }
+
+    // MARK: Corpus-driven (file → document → entity tree)
+
+    nonisolated private static let corpusRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()  // strip SceneSeamTests.swift
+        .deletingLastPathComponent()  // strip ThreeMFViewerTests
+        .deletingLastPathComponent()  // strip Tests
+        .deletingLastPathComponent()  // strip ThreeMFViewer
+        .deletingLastPathComponent()  // strip Packages
+        .appendingPathComponent("Corpus")
+
+    @Test(.enabled(if: FileManager.default.fileExists(
+        atPath: corpusRoot.appendingPathComponent("vanilla/synthetic_basematerials.3mf").path)))
+    func corpusBaseMaterialsFileBuildsColoredPlacedEntities() throws {
+        let url = Self.corpusRoot.appendingPathComponent("vanilla/synthetic_basematerials.3mf")
+        let scene = SceneBuilder.makeScene(for: try ThreeMFParser().parse(fileAt: url))
+
+        let model = try modelSubtree(of: scene)
+        let entities = modelEntities(in: model)
+        #expect(entities.count == 2)
+
+        let tints = try entities.map { try tint(of: try #require($0.model?.materials.first)) }
+        #expect(tints.contains { simd_distance($0, SIMD3(1, 0, 0)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(0x46 / 255.0, 0x82 / 255.0, 0xB4 / 255.0)) < 0.02 })
+
+        // The tetra's build item carries the 30 mm X translation.
+        let translations = entities.map { $0.position(relativeTo: model) }
+        #expect(translations.contains { simd_distance($0, SIMD3(30, 0, 0)) < 1e-4 })
     }
 
     // MARK: Staging

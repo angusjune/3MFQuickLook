@@ -13,6 +13,12 @@ public enum ThreeMFParseError: Error, Equatable {
     case malformedModelXML(partPath: String)
 }
 
+/// OPC part references come in both "/3D/x.model" and "3D/x.model" forms;
+/// the domain stores them zip-absolute (leading slash).
+func zipAbsolutePartPath(_ path: String) -> String {
+    path.hasPrefix("/") ? path : "/" + path
+}
+
 /// Read access to the OPC (zip) container of a 3MF package.
 final class OPCPackage {
     private static let modelRelationshipType =
@@ -52,7 +58,7 @@ final class OPCPackage {
         guard let target = Self.firstModelRelationshipTarget(in: rels) else {
             throw ThreeMFParseError.missingRootModel
         }
-        return target.hasPrefix("/") ? target : "/" + target
+        return zipAbsolutePartPath(target)
     }
 
     private static func firstModelRelationshipTarget(in data: Data) -> String? {

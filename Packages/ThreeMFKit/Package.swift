@@ -12,7 +12,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "ThreeMFKit", dependencies: ["ZIPFoundation"]),
-        .testTarget(name: "ThreeMFKitTests", dependencies: ["ThreeMFKit"]),
+        .testTarget(name: "ThreeMFKitTests", dependencies: ["ThreeMFKit", "ZIPFoundation"]),
         // Measures parse time and peak memory at the parse seam; the recorded
         // numbers live in docs/perf-baseline.md.
         .executableTarget(name: "threemf-bench", dependencies: ["ThreeMFKit"]),

@@ -75,3 +75,19 @@ public struct CameraRig: Equatable, Sendable {
         return (right, up, back)
     }
 }
+
+public extension CameraRig {
+    /// A `PerspectiveCamera` configured for this rig: its field of view, clip
+    /// planes suited to metric model scenes, and the rig's current pose.
+    /// Millimeter models frame at centimeter camera distances — the default
+    /// near plane (1 m) would clip such scenes away entirely.
+    @MainActor
+    func makeCamera() -> PerspectiveCamera {
+        let camera = PerspectiveCamera()
+        camera.camera.fieldOfViewInDegrees = fieldOfViewRadians * 180 / .pi
+        camera.camera.near = 0.001
+        camera.camera.far = 1000
+        camera.transform = transform
+        return camera
+    }
+}

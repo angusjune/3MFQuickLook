@@ -31,17 +31,11 @@ public enum OffscreenSceneRenderer {
         let renderer = try RealityRenderer()
         renderer.entities.append(scene)
 
-        // Auto-frame the scene with the same rig math the Viewer uses, so
+        // Auto-frame the scene with the same rig the Viewer uses, so
         // thumbnails match the preview's default view.
         var rig = CameraRig()
         rig.frame(SceneBuilder.modelBounds(of: scene))
-        let camera = PerspectiveCamera()
-        camera.camera.fieldOfViewInDegrees = rig.fieldOfViewRadians * 180 / .pi
-        // Millimeter models frame at centimeter camera distances; a default
-        // near plane can clip the scene away.
-        camera.camera.near = 0.001
-        camera.camera.far = 1000
-        camera.transform = rig.transform
+        let camera = rig.makeCamera()
         renderer.entities.append(camera)
         renderer.activeCamera = camera
 

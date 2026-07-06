@@ -27,14 +27,8 @@ public struct Viewer: View {
         RealityView { content in
             content.camera = .virtual
             content.add(scene)
-            let camera = PerspectiveCamera()
+            let camera = rig.makeCamera()
             camera.name = "RigCamera"
-            camera.camera.fieldOfViewInDegrees = rig.fieldOfViewRadians * 180 / .pi
-            // Millimeter models frame at centimeter camera distances; the
-            // default near plane would clip the whole scene away.
-            camera.camera.near = 0.001
-            camera.camera.far = 1000
-            camera.transform = rig.transform
             content.add(camera)
             viewerLogger.info("viewer scene: bounds \(String(describing: SceneBuilder.modelBounds(of: scene)), privacy: .public), camera at \(String(describing: rig.transform.translation), privacy: .public)")
         } update: { content in
