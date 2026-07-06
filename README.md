@@ -18,10 +18,18 @@ paint lands next ([issue #5](https://github.com/angusjune/3MFQuickLook/issues/5)
 ## Layout
 
 - `App/`, `PreviewExt/`, `ThumbExt/` — the Host App and the two Quick Look
-  extensions, thin adapters over the packages.
+  extensions, thin adapters over the packages. The Host App is itself a thin
+  viewer: open a `.3mf` (File → Open, or Finder's "Open With") to view it in
+  a document window, with no geometry budget. First launch offers onboarding
+  that checks the extensions' status, links to the System Settings pane that
+  enables them, and bundles a sample file to test with. It registers only as
+  an *alternate* handler — it never takes over the `.3mf` double-click
+  default.
 - `Packages/ThreeMFKit` — 3MF parsing: package file → `ThreeMFDocument`.
 - `Packages/ThreeMFViewer` — scene building and the shared interactive Viewer:
   document → RealityKit entity tree, plus offscreen thumbnail rendering.
+- `Packages/HostAppKit` — Host-App-side logic: Quick Look extension status
+  probing (via PluginKit elections), onboarding policy, the bundled sample.
 - `SmokeTests/` — end-to-end thumbnail smoke test.
 - `CONTEXT.md` — glossary; `docs/adr/` — architecture decisions.
 
@@ -45,6 +53,7 @@ Then press Space on any `.3mf` file in Finder.
 ```sh
 swift test --package-path Packages/ThreeMFKit
 swift test --package-path Packages/ThreeMFViewer
+swift test --package-path Packages/HostAppKit
 xcodebuild -project ThreeMFQuickLook.xcodeproj -scheme ThreeMFQuickLook \
   -configuration Debug -derivedDataPath build test    # end-to-end smoke
 ```

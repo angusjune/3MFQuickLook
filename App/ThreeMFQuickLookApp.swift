@@ -1,25 +1,23 @@
+import HostAppKit
 import SwiftUI
-import ThreeMFKit
-import ThreeMFViewer
 
+/// The Host App (CONTEXT.md): a thin viewer around the shared Viewer, plus
+/// first-run onboarding for the Quick Look extensions. Explicitly not a
+/// slicer or editor.
 @main
 struct ThreeMFQuickLookApp: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
-    }
-}
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
-private struct ContentView: View {
-    var body: some View {
-        VStack(spacing: 0) {
-            Text("Launching this app registers the Quick Look extensions. Press Space on a .3mf file in Finder to preview it.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding()
-            Viewer(document: ThreeMFDocument())
+    var body: some Scene {
+        DocumentGroup(viewing: ThreeMFFileDocument.self) { file in
+            DocumentView(data: file.document.data)
         }
-        .frame(minWidth: 520, minHeight: 420)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Quick Look Setup…") {
+                    OnboardingWindowController.shared.show()
+                }
+            }
+        }
     }
 }

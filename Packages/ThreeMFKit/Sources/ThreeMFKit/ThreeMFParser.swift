@@ -10,7 +10,16 @@ public struct ThreeMFParser: Sendable {
     public init() {}
 
     public func parse(fileAt url: URL) throws -> ThreeMFDocument {
-        let package = try OPCPackage(url: url)
+        try parse(package: OPCPackage(url: url))
+    }
+
+    /// Parses a 3MF package held in memory — the Host App's document windows
+    /// read files through `FileDocument`, which supplies bytes, not a URL.
+    public func parse(data: Data) throws -> ThreeMFDocument {
+        try parse(package: OPCPackage(data: data))
+    }
+
+    private func parse(package: OPCPackage) throws -> ThreeMFDocument {
         let rootPath = try package.rootModelPartPath()
 
         var parts: [String: ModelPart] = [:]
