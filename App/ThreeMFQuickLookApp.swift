@@ -8,6 +8,9 @@ struct ThreeMFQuickLookApp: App {
         WindowGroup {
             ContentView()
         }
+        .commands {
+            UpdaterCommands()  // Sparkle auto-update; see CheckForUpdates.swift
+        }
     }
 }
 
