@@ -31,8 +31,13 @@ public enum OffscreenSceneRenderer {
         let renderer = try RealityRenderer()
         renderer.entities.append(scene)
 
+        // Auto-frame the scene with the same rig math the Viewer uses, so
+        // thumbnails match the preview's default view.
+        var rig = CameraRig()
+        rig.frame(scene.visualBounds(relativeTo: nil))
         let camera = PerspectiveCamera()
-        camera.look(at: .zero, from: [1.1, 0.9, 1.6], relativeTo: nil)
+        camera.camera.fieldOfViewInDegrees = rig.fieldOfViewRadians * 180 / .pi
+        camera.transform = rig.transform
         renderer.entities.append(camera)
         renderer.activeCamera = camera
 
