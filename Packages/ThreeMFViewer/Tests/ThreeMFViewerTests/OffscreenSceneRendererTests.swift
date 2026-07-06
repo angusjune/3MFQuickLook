@@ -54,7 +54,11 @@ import ThreeMFViewer
                 if red > 80, red > green * 2, red > blue * 2 { redPixels += 1 }
             }
         }
-        #expect(redPixels > 100, "model not visible in auto-framed render")
+        // Framing must aim at the model, not the (much larger) backdrop: the
+        // cube has to fill a meaningful share of the 256×256 frame, not be a
+        // speck (65,536 pixels total; a properly framed cube covers several
+        // thousand).
+        #expect(redPixels > 2500, "model too small or missing in auto-framed render: \(redPixels) red pixels")
     }
 
     @Test(.timeLimit(.minutes(1)))

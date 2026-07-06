@@ -1,7 +1,10 @@
 import AppKit
+import OSLog
 import RealityKit
 import SwiftUI
 import ThreeMFKit
+
+let viewerLogger = Logger(subsystem: "com.angusjune.ThreeMFViewer", category: "viewer")
 
 /// The shared interactive 3D view used by the Host App and the Preview
 /// Extension: the document's scene under the custom camera rig
@@ -16,7 +19,7 @@ public struct Viewer: View {
         let scene = SceneBuilder.makeScene(for: document)
         self.scene = scene
         var rig = CameraRig()
-        rig.frame(scene.visualBounds(relativeTo: nil))
+        rig.frame(SceneBuilder.modelBounds(of: scene))
         _rig = State(initialValue: rig)
     }
 
@@ -27,8 +30,13 @@ public struct Viewer: View {
             let camera = PerspectiveCamera()
             camera.name = "RigCamera"
             camera.camera.fieldOfViewInDegrees = rig.fieldOfViewRadians * 180 / .pi
+            // Millimeter models frame at centimeter camera distances; the
+            // default near plane would clip the whole scene away.
+            camera.camera.near = 0.001
+            camera.camera.far = 1000
             camera.transform = rig.transform
             content.add(camera)
+            viewerLogger.info("viewer scene: bounds \(String(describing: SceneBuilder.modelBounds(of: scene)), privacy: .public), camera at \(String(describing: rig.transform.translation), privacy: .public)")
         } update: { content in
             if let camera = content.entities.first(where: { $0.name == "RigCamera" }) {
                 camera.transform = rig.transform
@@ -91,9 +99,10 @@ final class EventCaptureView: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        // Sized so a full-height trackpad swipe zooms ~6×, a wheel notch ~1.2×.
         let delta = event.hasPreciseScrollingDeltas
-            ? event.scrollingDeltaY / 120
-            : event.scrollingDeltaY / 12
+            ? event.scrollingDeltaY / 300
+            : event.scrollingDeltaY / 10
         onZoom?(exp2(delta))
     }
 

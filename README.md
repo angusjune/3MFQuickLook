@@ -4,9 +4,12 @@ Quick Look previews and Finder thumbnails for `.3mf` files on macOS 15+.
 Press Space on a 3MF file and get an interactive 3D preview; folders of models
 get real thumbnails instead of blank icons.
 
-**Status: walking skeleton.** The app and both Quick Look extensions work
-end-to-end with a placeholder scene; 3MF parsing lands next
-([issue #3](https://github.com/angusjune/3MFQuickLook/issues/3)).
+**Status: vanilla 3MF end-to-end.** Core-spec parsing (plus the materials and
+production extensions) renders real geometry with file colors: spacebar
+previews are interactive (drag = orbit, scroll/pinch = zoom, secondary
+drag = pan) and Finder thumbnails are true offscreen renders. Slicer-project
+metadata (plates, filaments) lands next
+([issue #4](https://github.com/angusjune/3MFQuickLook/issues/4)).
 
 ## Layout
 

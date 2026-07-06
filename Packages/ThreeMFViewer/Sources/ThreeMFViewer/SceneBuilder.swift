@@ -24,6 +24,14 @@ public enum SceneBuilder {
         return root
     }
 
+    /// The bounds cameras should frame: the document's geometry (the "Model"
+    /// subtree), not staging like the backdrop, which is deliberately much
+    /// wider than the model.
+    @MainActor
+    public static func modelBounds(of scene: Entity) -> BoundingBox {
+        (scene.findEntity(named: "Model") ?? scene).visualBounds(relativeTo: nil)
+    }
+
     // MARK: Model subtree
 
     /// The document's build, in 3MF model space, wrapped in one entity that

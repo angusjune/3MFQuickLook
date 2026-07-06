@@ -16,14 +16,24 @@ import Testing
         "com.angusjune.ThreeMFQuickLook.ThumbExt",
     ]
 
-    @Test(.timeLimit(.minutes(2)))
+    /// A real vanilla corpus file: with the real parser, a garbage payload
+    /// would (correctly) fail, so the smoke fixture must be a valid package.
+    private static let corpusFile = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()  // strip ThumbnailSmokeTests.swift
+        .deletingLastPathComponent()  // strip SmokeTests
+        .appendingPathComponent("Corpus/vanilla/box.3mf")
+
+    @Test(
+        .timeLimit(.minutes(2)),
+        .enabled(if: FileManager.default.fileExists(atPath: corpusFile.path)))
     func thumbnailForA3MFFileHasVisibleContent() async throws {
         try await registerHostApp()
 
+        // Copied to a fresh name so Quick Look can't serve a stale cache.
         let fixture = FileManager.default.temporaryDirectory
             .appendingPathComponent("smoke-\(UUID().uuidString)")
             .appendingPathExtension("3mf")
-        try Data("walking-skeleton payload".utf8).write(to: fixture)
+        try FileManager.default.copyItem(at: Self.corpusFile, to: fixture)
         defer { try? FileManager.default.removeItem(at: fixture) }
 
         let request = QLThumbnailGenerator.Request(
