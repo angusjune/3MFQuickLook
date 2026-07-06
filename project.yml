@@ -42,10 +42,24 @@ targets:
         CFBundleDisplayName: 3MF QuickLook
         NSPrincipalClass: NSApplication
         LSApplicationCategoryType: public.app-category.utilities
-        UTImportedTypeDeclarations:
-          - UTTypeIdentifier: io.3mf.model
+        # Required for the Preview Extension: Quick Look only consults a
+        # preview appex for types its containing app declares as openable
+        # document types (walking-skeleton finding — removing this silently
+        # disables spacebar previews while thumbnails keep working).
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: 3MF Package
+            LSItemContentTypes: [com.angusjune.threemf]
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+        # Our own namespaced identifier for .3mf (we import the format but own
+        # this identifier). Deliberately digit-free and NOT conforming to
+        # public.3d-content: that conformance can route the Quick Look panel to
+        # the system's built-in 3D (USDZ) presentation instead of our
+        # Preview Extension.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.angusjune.threemf
             UTTypeDescription: 3D Manufacturing Format package
-            UTTypeConformsTo: [public.data, public.3d-content]
+            UTTypeConformsTo: [public.data]
             UTTypeTagSpecification:
               public.filename-extension: [3mf]
               public.mime-type: [model/3mf]
@@ -72,7 +86,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.quicklook.preview
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PreviewViewController
           NSExtensionAttributes:
-            QLSupportedContentTypes: [io.3mf.model]
+            QLSupportedContentTypes: [com.angusjune.threemf]
             QLSupportsSearchableItems: false
 
   ThumbExt:
@@ -97,7 +111,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.quicklook.thumbnail
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ThumbnailProvider
           NSExtensionAttributes:
-            QLSupportedContentTypes: [io.3mf.model]
+            QLSupportedContentTypes: [com.angusjune.threemf]
             QLThumbnailMinimumDimension: 0
 
   # No dependency on the app target: that would make XcodeGen set TEST_HOST
