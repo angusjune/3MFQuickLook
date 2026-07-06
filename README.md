@@ -4,24 +4,47 @@ Quick Look previews and Finder thumbnails for `.3mf` files on macOS 15+.
 Press Space on a 3MF file and get an interactive 3D preview; folders of models
 get real thumbnails instead of blank icons.
 
+- **Preview** — Space on any `.3mf` file opens a real 3D view: drag to orbit,
+  scroll or pinch to zoom, secondary-drag to pan.
+- **Thumbnails** — Finder icons and grid thumbnails are true offscreen renders
+  of the model, with the file's own colors.
+- **Host app** — a thin viewer: open a `.3mf` file for the same interactive
+  view in a window. It's not a slicer or an editor.
+
 **Status: vanilla 3MF end-to-end.** Core-spec parsing (plus the materials and
-production extensions) renders real geometry with file colors: spacebar
-previews are interactive (drag = orbit, scroll/pinch = zoom, secondary
-drag = pan) and Finder thumbnails are true offscreen renders. Slicer-project
+production extensions) renders real geometry with file colors. Slicer-project
 metadata (plates, filaments) lands next
 ([issue #4](https://github.com/angusjune/3MFQuickLook/issues/4)).
 
-## Layout
+## Install
 
-- `App/`, `PreviewExt/`, `ThumbExt/` — the Host App and the two Quick Look
-  extensions, thin adapters over the packages.
-- `Packages/ThreeMFKit` — 3MF parsing: package file → `ThreeMFDocument`.
-- `Packages/ThreeMFViewer` — scene building and the shared interactive Viewer:
-  document → RealityKit entity tree, plus offscreen thumbnail rendering.
-- `SmokeTests/` — end-to-end thumbnail smoke test.
-- `CONTEXT.md` — glossary; `docs/adr/` — architecture decisions.
+1. Download the latest `3MFQuickLook-<version>.dmg` from
+   [Releases](https://github.com/angusjune/3MFQuickLook/releases).
+2. Open it and drag **3MF QuickLook** to Applications.
+3. Launch the app once — that registers the Quick Look extensions with macOS.
 
-## Build and run
+Builds are Developer ID–signed and notarized, so Gatekeeper opens them without
+ceremony. The app keeps itself current via [Sparkle](https://sparkle-project.org)
+(check manually with **3MF QuickLook → Check for Updates…**).
+
+### If previews don't show up
+
+macOS occasionally needs a nudge to route Quick Look to a new extension:
+
+- Check the extensions are enabled: **System Settings → General → Login Items
+  & Extensions → Extensions → Quick Look** — both *3MF QuickLook* entries
+  should be on.
+- Relaunch Finder (Option-right-click its Dock icon → Relaunch), or log out
+  and back in.
+
+## Usage
+
+- Select a `.3mf` file in Finder and press **Space**: interactive preview
+  (drag = orbit, scroll/pinch = zoom, secondary drag = pan).
+- Icon and gallery views show rendered thumbnails automatically.
+- Double-click (or "Open With") to view the model in the app window.
+
+## Building from source
 
 Requires Xcode 26+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 (`brew install xcodegen`). The Xcode project is generated, not committed:
@@ -36,7 +59,20 @@ qlmanage -r                                            # reset Quick Look after 
 
 Then press Space on any `.3mf` file in Finder.
 
-## Tests
+### Layout
+
+- `App/`, `PreviewExt/`, `ThumbExt/` — the Host App and the two Quick Look
+  extensions, thin adapters over the packages.
+- `Packages/ThreeMFKit` — 3MF parsing: package file → `ThreeMFDocument`.
+- `Packages/ThreeMFViewer` — scene building and the shared interactive Viewer:
+  document → RealityKit entity tree, plus offscreen thumbnail rendering.
+- `SmokeTests/` — end-to-end thumbnail smoke test.
+- `scripts/`, `.github/workflows/` — the release pipeline
+  ([docs/RELEASING.md](docs/RELEASING.md)).
+- `appcast.xml` — the Sparkle update feed, appended by the release workflow.
+- `CONTEXT.md` — glossary; `docs/adr/` — architecture decisions.
+
+### Tests
 
 ```sh
 swift test --package-path Packages/ThreeMFKit
@@ -49,3 +85,10 @@ The smoke test launches the built app to register the extensions, then requests
 a thumbnail through the `QLThumbnailGenerator` API — the same path Finder uses.
 Never probe thumbnails with `qlmanage -t`; it hangs against extension-based
 providers.
+
+### Releasing
+
+Pushing a version tag (`v1.2.3`) produces a signed, notarized, stapled DMG on
+a GitHub Release and publishes the Sparkle appcast entry — see
+[docs/RELEASING.md](docs/RELEASING.md) for the one-time credential setup and
+the release checklist.
