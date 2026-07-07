@@ -19,6 +19,39 @@ public struct ThreeMFParser: Sendable {
         try parse(package: OPCPackage(data: data))
     }
 
+    /// The package's Embedded Thumbnail, extracted cheaply without parsing
+    /// geometry — the "instant first paint" seam (issue #5). For a Slicer
+    /// Project it's the default Plate's Thumbnail (first plate with objects);
+    /// otherwise the OPC Package Thumbnail. Returns nil when the package
+    /// carries neither.
+    public func embeddedThumbnail(fileAt url: URL) throws -> EmbeddedThumbnail? {
+        try embeddedThumbnail(package: OPCPackage(url: url))
+    }
+
+    /// The Embedded Thumbnail of a package held in memory.
+    public func embeddedThumbnail(data: Data) throws -> EmbeddedThumbnail? {
+        try embeddedThumbnail(package: OPCPackage(data: data))
+    }
+
+    private func embeddedThumbnail(package: OPCPackage) throws -> EmbeddedThumbnail? {
+        // Slicer Project: the default plate's own thumbnail wins, even when
+        // the package also declares an OPC Package Thumbnail (Bambu writes
+        // both). Reads only the relationships and config parts.
+        if let rootPath = try? package.rootModelPartPath(),
+           let platePath = SlicerMetadataParser.defaultPlateThumbnailPath(
+               package: package, rootPartPath: rootPath),
+           let data = package.partDataIfPresent(at: platePath) {
+            return EmbeddedThumbnail(partPath: platePath, data: data)
+        }
+        // Vanilla file: the whole-package OPC thumbnail, when a CAD exporter
+        // wrote one.
+        if let opcPath = package.packageThumbnailPartPath(),
+           let data = package.partDataIfPresent(at: opcPath) {
+            return EmbeddedThumbnail(partPath: opcPath, data: data)
+        }
+        return nil
+    }
+
     private func parse(package: OPCPackage) throws -> ThreeMFDocument {
         let rootPath = try package.rootModelPartPath()
 

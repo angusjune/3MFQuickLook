@@ -1,49 +1,28 @@
+import AppKit
 import SwiftUI
 import ThreeMFKit
 import ThreeMFViewer
 
-/// A document window: the shared Viewer over the fully parsed file. The Host
-/// App has no Geometry Budget (CONTEXT.md) — every file, however large,
-/// parses and renders completely.
+/// A document window: the shared static-then-3D ``PreviewView`` over the file.
+/// The Host App has no Geometry Budget (CONTEXT.md) — every file, however
+/// large, parses and renders completely; it gets the same instant-first-paint
+/// Embedded Thumbnail handoff as the preview.
 struct DocumentView: View {
-    let data: Data
+    private let data: Data
+    private let staticImage: NSImage?
 
-    private enum Phase {
-        case loading
-        case loaded(ThreeMFDocument)
-        case failed(String)
+    init(data: Data) {
+        self.data = data
+        // Cheap, geometry-free: paint the Embedded Thumbnail first if the file
+        // carries one.
+        self.staticImage = (try? ThreeMFParser().embeddedThumbnail(data: data))
+            .flatMap { NSImage(data: $0.data) }
     }
-
-    @State private var phase: Phase = .loading
 
     var body: some View {
-        Group {
-            switch phase {
-            case .loading:
-                ProgressView("Loading model…")
-            case .loaded(let document):
-                Viewer(document: document)
-            case .failed(let reason):
-                ContentUnavailableView {
-                    Label("Can’t Read This File", systemImage: "cube.transparent")
-                } description: {
-                    Text(reason)
-                }
-            }
+        PreviewView(staticImage: staticImage) {
+            try ThreeMFParser().parse(data: data)
         }
         .frame(minWidth: 480, minHeight: 360)
-        .task(id: data) { await load() }
-    }
-
-    private func load() async {
-        let data = data
-        do {
-            let document = try await Task.detached(priority: .userInitiated) {
-                try ThreeMFParser().parse(data: data)
-            }.value
-            phase = .loaded(document)
-        } catch {
-            phase = .failed(String(describing: error))
-        }
     }
 }

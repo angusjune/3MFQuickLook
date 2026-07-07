@@ -23,6 +23,10 @@ func zipAbsolutePartPath(_ path: String) -> String {
 final class OPCPackage {
     private static let modelRelationshipType =
         "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
+    /// The core OPC (Open Packaging Conventions) thumbnail relationship type —
+    /// the whole-package cover image some CAD exporters write.
+    private static let thumbnailRelationshipType =
+        "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"
 
     private let archive: Archive
 
@@ -76,11 +80,26 @@ final class OPCPackage {
         return zipAbsolutePartPath(target)
     }
 
+    /// The OPC Package Thumbnail's zip-absolute part path, from the package
+    /// `_rels/.rels` relationship of type
+    /// `…/2006/relationships/metadata/thumbnail`; nil when absent. Reads only
+    /// the tiny relationships part — never any geometry.
+    func packageThumbnailPartPath() -> String? {
+        guard let rels = try? partData(at: "/_rels/.rels"),
+              let target = Self.firstRelationshipTarget(in: rels, ofType: Self.thumbnailRelationshipType)
+        else { return nil }
+        return zipAbsolutePartPath(target)
+    }
+
     private static func firstModelRelationshipTarget(in data: Data) -> String? {
+        firstRelationshipTarget(in: data, ofType: modelRelationshipType)
+    }
+
+    private static func firstRelationshipTarget(in data: Data, ofType type: String) -> String? {
         LibXML.withDocument(data) { doc in
             guard let root = xmlDocGetRootElement(doc) else { return nil }
             for relationship in LibXML.children(of: root, named: "Relationship")
-            where LibXML.attribute(of: relationship, named: "Type") == modelRelationshipType {
+            where LibXML.attribute(of: relationship, named: "Type") == type {
                 return LibXML.attribute(of: relationship, named: "Target")
             }
             return nil

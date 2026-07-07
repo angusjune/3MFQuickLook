@@ -27,6 +27,18 @@ enum SlicerMetadataParser {
         return info
     }
 
+    /// The Plate Thumbnail path of the plate the preview shows by default —
+    /// the first Plate that has objects (CONTEXT.md thumbnail policy). Reads
+    /// only `model_settings.config`; never touches geometry. Returns nil when
+    /// the package isn't a Slicer Project or the default plate has no
+    /// thumbnail.
+    static func defaultPlateThumbnailPath(package: OPCPackage, rootPartPath: String) -> String? {
+        guard let settings = package.partDataIfPresent(at: modelSettingsPath),
+              let info = parseModelSettings(settings, rootPartPath: rootPartPath, objects: [])
+        else { return nil }
+        return info.defaultPlate?.thumbnailPartPath
+    }
+
     // MARK: model_settings.config (plates, assignments)
 
     private static func parseModelSettings(

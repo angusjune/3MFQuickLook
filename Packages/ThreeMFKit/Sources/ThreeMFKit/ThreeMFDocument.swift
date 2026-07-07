@@ -1,3 +1,4 @@
+import Foundation
 import simd
 
 /// The parsed domain model of a 3MF package: the geometry, colors, and build
@@ -27,6 +28,22 @@ public struct ThreeMFDocument: Equatable, Sendable {
 
     public func object(_ ref: ResourceRef) -> ObjectResource? {
         objects.first { $0.ref == ref }
+    }
+}
+
+/// An Embedded Thumbnail (CONTEXT.md): the pre-rendered image a package
+/// carries — a Slicer Project's Plate Thumbnail or a Vanilla file's OPC
+/// Package Thumbnail. Extracted cheaply, without parsing geometry, so the
+/// preview and Finder icon can paint instantly.
+public struct EmbeddedThumbnail: Equatable, Sendable {
+    /// Zip-absolute path of the image part, e.g. "/Metadata/plate_1.png".
+    public var partPath: String
+    /// The raw image bytes (PNG or JPEG, as the slicer wrote them).
+    public var data: Data
+
+    public init(partPath: String, data: Data) {
+        self.partPath = partPath
+        self.data = data
     }
 }
 
