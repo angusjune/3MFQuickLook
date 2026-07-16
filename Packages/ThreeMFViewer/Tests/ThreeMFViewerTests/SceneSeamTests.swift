@@ -606,6 +606,30 @@ import ThreeMFViewer
         #expect(tints.contains { simd_distance($0, SIMD3(1, 1, 0)) < 0.02 })
     }
 
+    @Test(.enabled(if: corpusHas("slicer-projects/Hinged-Locked-Chest_MultiColor.3mf")))
+    func corpusRealPaintedModelRendersBothFilamentColors() throws {
+        // A real painted MakerWorld export (ground truth in the parse-seam
+        // test): base extruder 1 = filament #7D6556, so the six state-1
+        // strokes share the base material and the 12,505 gray strokes
+        // (#A6A9AA) get their own — the chest renders in exactly the two
+        // filament colors, matching the slicer's view.
+        let url = Self.corpusRoot
+            .appendingPathComponent("slicer-projects/Hinged-Locked-Chest_MultiColor.3mf")
+        let scene = SceneBuilder.makeScene(for: try ThreeMFParser().parse(fileAt: url))
+
+        let parts = modelEntities(in: try modelSubtree(of: scene)).filter { $0.model != nil }
+        #expect(parts.count == 1)
+        let materials = try #require(parts.first?.model?.materials)
+        #expect(materials.count == 2)
+        let tints = try materials.map { try tint(of: $0) }
+        #expect(tints.contains {
+            simd_distance($0, SIMD3<Float>(0x7D, 0x65, 0x56) / 255) < 0.02
+        })
+        #expect(tints.contains {
+            simd_distance($0, SIMD3<Float>(0xA6, 0xA9, 0xAA) / 255) < 0.02
+        })
+    }
+
     @Test(.enabled(if: corpusHas("slicer-projects/synthetic_multiplate.3mf")))
     func corpusMultiPlateProjectShowsOnlyTheDefaultPlate() throws {
         let url = Self.corpusRoot.appendingPathComponent("slicer-projects/synthetic_multiplate.3mf")

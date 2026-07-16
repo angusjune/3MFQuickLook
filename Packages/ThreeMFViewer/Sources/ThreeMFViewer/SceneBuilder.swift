@@ -98,7 +98,7 @@ public enum SceneBuilder {
                 mesh,
                 name: object.name,
                 color: filamentColor ?? object.defaultColor,
-                slicerProject: slicerProject)
+                filaments: slicerProject?.filaments ?? [])
         case .components(let components):
             let parent = Entity()
             parent.name = object.name ?? ""
@@ -124,7 +124,7 @@ public enum SceneBuilder {
         _ mesh: Mesh,
         name: String?,
         color: ColorRGBA?,
-        slicerProject: SlicerProjectInfo? = nil
+        filaments: [Filament]
     ) -> Entity {
         let indices = validTriangleIndices(of: mesh)
         guard !mesh.positions.isEmpty, !indices.isEmpty else { return Entity() }
@@ -138,7 +138,7 @@ public enum SceneBuilder {
         // color, so partially painted meshes keep both their paint and base.
         let objectNSColor = color.map(nsColor) ?? neutralColor
         let materials: [any RealityKit.Material]
-        if let triangleColors = perTriangleColors(of: mesh, slicerProject: slicerProject),
+        if let triangleColors = perTriangleColors(of: mesh, filaments: filaments),
            triangleColors.count * 3 == indices.count {
             var order: [ColorRGBA?] = []
             var indexOfColor: [ColorRGBA?: UInt32] = [:]
@@ -179,10 +179,9 @@ public enum SceneBuilder {
     /// mapping; without filament definitions paint has no meaning and the
     /// property colors (or the plain object color) stand alone.
     private static func perTriangleColors(
-        of mesh: Mesh, slicerProject: SlicerProjectInfo?
+        of mesh: Mesh, filaments: [Filament]
     ) -> [ColorRGBA?]? {
-        guard let paints = mesh.trianglePaintFilamentIndices,
-              let filaments = slicerProject?.filaments, !filaments.isEmpty else {
+        guard let paints = mesh.trianglePaintFilamentIndices, !filaments.isEmpty else {
             return mesh.triangleColors
         }
         var colors = mesh.triangleColors ?? Array(repeating: nil, count: paints.count)

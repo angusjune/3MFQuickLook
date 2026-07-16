@@ -134,6 +134,35 @@ import ThreeMFKit
         #expect(mesh.triangleColors == nil)
     }
 
+    /// A real painted MakerWorld export (Bambu Studio 02.01, "Hinged Locked
+    /// Treasure Chest", CC BY-NC-SA). Ground truth by independent inspection
+    /// (`unzip -p … | grep paint_color`): 87,756 triangles, of which 12,505
+    /// carry `paint_color="8"` (state 2 → filament index 1) and 6 carry
+    /// `paint_color="4"` (state 1 → filament index 0); filament_colour
+    /// ["#7D6556", "#A6A9AA"].
+    @Test(.enabled(if: Corpus.has("slicer-projects/Hinged-Locked-Chest_MultiColor.3mf")))
+    func realMakerWorldPaintedModelExposesItsStrokes() throws {
+        let doc = try ThreeMFParser().parse(
+            fileAt: Corpus.url("slicer-projects/Hinged-Locked-Chest_MultiColor.3mf"))
+
+        let slicer = try #require(doc.slicerProject)
+        #expect(slicer.filaments.map(\.color) == [
+            ColorRGBA(red: 0x7D, green: 0x65, blue: 0x56),
+            ColorRGBA(red: 0xA6, green: 0xA9, blue: 0xAA),
+        ])
+
+        let mesh = try #require(
+            doc.object(ResourceRef(partPath: "/3D/Objects/object_1.model", id: 1))?.mesh)
+        #expect(mesh.triangleCount == 87756)
+        let paints = try #require(mesh.trianglePaintFilamentIndices)
+        #expect(paints.count == mesh.triangleCount)
+        var tally: [Int?: Int] = [:]
+        for paint in paints { tally[paint, default: 0] += 1 }
+        #expect(tally[0] == 6)
+        #expect(tally[1] == 12505)
+        #expect(tally[nil] == 87756 - 12511)
+    }
+
     /// Regression (issue #9 acceptance): unpainted corpus projects keep
     /// exposing no paint data.
     @Test(.enabled(if: Corpus.has("slicer-projects/synthetic_multiplate.3mf")))

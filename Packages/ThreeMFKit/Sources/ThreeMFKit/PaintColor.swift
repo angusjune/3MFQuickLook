@@ -14,13 +14,25 @@ import Foundation
 /// followed by their `splitSides + 1` children, depth-first. State 0 is
 /// unpainted; state N paints filament N (1-based).
 enum PaintColor {
+    /// The filament a paint state selects, as a 0-based index into
+    /// ``SlicerProjectInfo/filaments``; nil for state 0 (unpainted).
+    static func filamentIndex(ofState state: UInt32) -> Int? {
+        state == 0 ? nil : Int(state) - 1
+    }
+
+    /// Longest encoding worth decoding. Real strokes run a few dozen nibbles
+    /// (slicers bound the split depth); this caps the decoder's share-stack
+    /// allocation against a hostile attribute (ADR-0002's zip-bomb posture).
+    private static let maxEncodedLength = 8192
+
     /// The dominant paint state of one encoded triangle: the state covering
     /// the largest share of its area, approximating each split's children as
     /// equal shares (per the PRD, sub-triangle fidelity is out of scope).
     /// Ties prefer paint over bare so faint strokes stay visible. Returns 0
-    /// (unpainted) for empty or garbage values; a truncated stream counts
-    /// whatever decoded before the cut.
+    /// (unpainted) for empty, oversized, or garbage values; a truncated
+    /// stream counts whatever decoded before the cut.
     static func dominantState(of value: UnsafeBufferPointer<UInt8>) -> UInt32 {
+        guard value.count <= maxEncodedLength else { return 0 }
         var cursor = value.count
         func nextNibble() -> UInt32? {
             cursor -= 1

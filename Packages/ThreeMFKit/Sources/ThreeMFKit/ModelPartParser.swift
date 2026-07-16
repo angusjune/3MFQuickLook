@@ -38,7 +38,7 @@ struct ModelPart {
                     triangleIndices: raw.indices,
                     triangleColors: resolvedTriangleColors(of: raw, defaultColor: defaultColor),
                     trianglePaintFilamentIndices: raw.hasPaintedTriangles
-                        ? raw.triPaintStates.map { $0 == 0 ? nil : Int($0) - 1 }
+                        ? raw.triPaintStates.map(PaintColor.filamentIndex(ofState:))
                         : nil))
             }
             return ObjectResource(
