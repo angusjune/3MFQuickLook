@@ -1,0 +1,11 @@
+# CLAUDE.md
+
+## Quick Look debugging gotchas
+
+- "QuickLook didn't work" reports: first run `file <the>.3mf` — must be `Zip archive`. 15-byte text stubs preview as a generic icon by design; known-good fixtures live in `Corpus/`.
+- Spacebar panel shows generic icon/static image while thumbnails still work → registration, not code. Check for dangling LaunchServices records: `lsregister -dump | grep -E "^path:.*(PreviewExt|ThumbExt|3MF QuickLook.app)"` — any path no longer on disk (deleted `.claude/worktrees/*` or prototype builds) poisons preview election. (`lsregister` = `/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister`)
+- Fix: `lsregister -u "<dead app path>"` per ghost → `lsregister -f "build/Build/Products/Debug/3MF QuickLook.app"` → `qlmanage -r && qlmanage -r cache` → kill stale workers (`pkill -f "PreviewExt|ThumbExt"; killall QuickLookUIService com.apple.quicklook.ThumbnailsAgent`). No reboot or Finder restart needed.
+- Pass/fail signal is the Finder log, not eyeballs: `/usr/bin/log show --info --predicate 'subsystem CONTAINS "quicklook"'` → `got displayBundleID com.apple.qldisplay.Generic` = broken; `…qldisplay.Extensions` + launchd spawning PreviewExt = healthy.
+- `qlmanage -t`/`-p` do NOT prove extension routing (cache hits, sandbox-token failures, hangs). Thumbnail check: Swift harness calling `QLThumbnailGenerator.generateBestRepresentation`. Preview check: real Finder spacebar panel.
+- Never build or launch the app inside agent worktrees or scratch prototypes — LaunchServices registers those copies and they steal the extension election, breaking previews even after the directory is deleted.
+- Canonical dev build: `xcodebuild -scheme ThreeMFQuickLook -configuration Debug -derivedDataPath build build` → `build/Build/Products/Debug/3MF QuickLook.app`; `open` it once after rebuilding so the appexes re-register.
