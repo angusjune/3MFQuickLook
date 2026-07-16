@@ -14,7 +14,7 @@ public struct PreviewView: View {
     private let staticImage: NSImage?
     private let parse: @Sendable () throws -> ThreeMFDocument
 
-    private enum Phase: Equatable {
+    enum Phase: Equatable {
         case loading
         case loaded(ThreeMFDocument)
         case failed
@@ -36,45 +36,71 @@ public struct PreviewView: View {
 
     public var body: some View {
         ZStack {
-            base
-
-            // The 3D scene crossfades in over the base layer once parsing
-            // completes; the opaque RealityView then covers it entirely. The
-            // opacity transition on insertion is what makes it fade rather than
-            // pop, so the state change in `run()` is wrapped in `withAnimation`.
-            if case .loaded(let document) = phase {
+            // Exactly one layer per phase — see `layer(for:hasStaticImage:)`.
+            // The RealityView background is transparent, so the static base
+            // must leave the hierarchy when the viewer arrives or it would
+            // composite into the 3D scene. The paired opacity transitions turn
+            // the swap into a crossfade; the state change in `run()` is
+            // wrapped in `withAnimation`.
+            switch Self.layer(for: phase, hasStaticImage: staticImage != nil) {
+            case .staticImage(let sceneIsLoading):
+                if let staticImage {
+                    Image(nsImage: staticImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .overlay(alignment: .bottomTrailing) {
+                            if sceneIsLoading {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .padding(8)
+                                    .background(.ultraThinMaterial, in: Circle())
+                                    .padding(12)
+                            }
+                        }
+                        .transition(.opacity)
+                }
+            case .loading:
+                loadingState.transition(.opacity)
+            case .failure:
+                failureState.transition(.opacity)
+            case .viewer(let document):
                 Viewer(document: document)
                     .transition(.opacity)
             }
         }
+        .background(Color(nsColor: .textBackgroundColor))
         .task { await run() }
     }
 
-    /// The layer beneath the 3D scene: the embedded image when present,
-    /// otherwise a neutral loading or failure state. When parsing fails but an
+    /// Which single layer the preview shows for a phase. The viewer REPLACES
+    /// the static image rather than covering it. When parsing fails but an
     /// embedded image is present, the image simply stays — it is the graceful
     /// static fallback (the open-in-app hint for over-budget files is #10).
-    @ViewBuilder
-    private var base: some View {
-        if let staticImage {
-            Image(nsImage: staticImage)
-                .resizable()
-                .interpolation(.high)
-                .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .textBackgroundColor))
-        } else if phase == .failed {
-            failureState
-        } else {
-            loadingState
+    static func layer(for phase: Phase, hasStaticImage: Bool) -> Layer {
+        switch phase {
+        case .loaded(let document): .viewer(document)
+        case .loading where hasStaticImage: .staticImage(sceneIsLoading: true)
+        case .loading: .loading
+        case .failed where hasStaticImage: .staticImage(sceneIsLoading: false)
+        case .failed: .failure
         }
+    }
+
+    enum Layer: Equatable {
+        /// The embedded image; `sceneIsLoading` adds the corner spinner that
+        /// tells the user the interactive 3D scene is still on its way.
+        case staticImage(sceneIsLoading: Bool)
+        case loading
+        case failure
+        case viewer(ThreeMFDocument)
     }
 
     private var loadingState: some View {
         ProgressView()
             .controlSize(.small)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .textBackgroundColor))
     }
 
     private var failureState: some View {
@@ -84,7 +110,6 @@ public struct PreviewView: View {
             Text("This 3MF file couldn’t be opened.")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .textBackgroundColor))
     }
 
     private func run() async {
