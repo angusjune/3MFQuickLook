@@ -17,7 +17,8 @@ import ThreeMFViewer
     /// A unit cube mesh: 8 vertices, 12 triangles.
     private static func cubeMesh(
         size: Float = 10,
-        triangleColors: [ColorRGBA?]? = nil
+        triangleColors: [ColorRGBA?]? = nil,
+        paintIndices: [Int?]? = nil
     ) -> Mesh {
         var positions: [SIMD3<Float>] = []
         for z: Float in [0, 1] {
@@ -32,7 +33,11 @@ import ThreeMFViewer
             0, 1, 4, 1, 5, 4, 2, 6, 3, 3, 6, 7,
             0, 4, 2, 2, 4, 6, 1, 3, 5, 3, 7, 5,
         ]
-        return Mesh(positions: positions, triangleIndices: triangles, triangleColors: triangleColors)
+        return Mesh(
+            positions: positions,
+            triangleIndices: triangles,
+            triangleColors: triangleColors,
+            trianglePaintFilamentIndices: paintIndices)
     }
 
     private static func document(
@@ -200,6 +205,116 @@ import ThreeMFViewer
         let tints = try materials.map { try tint(of: $0) }
         #expect(tints.contains { simd_distance($0, SIMD3(1, 0, 0)) < 0.02 })
         #expect(tints.contains { simd_distance($0, SIMD3(0, 0, 1)) < 0.02 })
+    }
+
+    // MARK: Paint (issue #9)
+
+    /// One painted mesh object wrapped in a Slicer Project whose filaments
+    /// carry the given colors; the object itself prints on `baseFilament`.
+    private static func paintedDocument(
+        mesh: Mesh,
+        filaments: [ColorRGBA?],
+        baseFilament: Int? = nil
+    ) -> ThreeMFDocument {
+        let ref = ResourceRef(partPath: rootPart, id: 1)
+        var doc = document(
+            objects: [ObjectResource(ref: ref, content: .mesh(mesh))],
+            buildItems: [BuildItem(objectRef: ref)])
+        doc.slicerProject = SlicerProjectInfo(
+            filaments: filaments.map { Filament(color: $0, type: "PLA") },
+            plates: [Plate(id: 1, objectRefs: [ref])],
+            filamentIndexByObject: baseFilament.map { [ref: $0] } ?? [:],
+            plateRect: PlateRect(width: 180, depth: 180))
+        return doc
+    }
+
+    @Test func paintedTrianglesGetFilamentColorsAndUnpaintedKeepTheObjectFilament() throws {
+        // Six faces painted filament 0 (red), three filament 1 (green); the
+        // remaining three stay on the object's own filament 2 (blue).
+        let paint: [Int?] = Array(repeating: 0, count: 6)
+            + Array(repeating: 1, count: 3)
+            + Array(repeating: nil, count: 3)
+        let doc = Self.paintedDocument(
+            mesh: Self.cubeMesh(paintIndices: paint),
+            filaments: [
+                ColorRGBA(red: 255, green: 0, blue: 0),
+                ColorRGBA(red: 0, green: 255, blue: 0),
+                ColorRGBA(red: 0, green: 0, blue: 255),
+            ],
+            baseFilament: 2)
+
+        let scene = SceneBuilder.makeScene(for: doc)
+        let model = try #require(modelEntities(in: try modelSubtree(of: scene)).first)
+        let materials = try #require(model.model?.materials)
+        #expect(materials.count == 3)
+        let tints = try materials.map { try tint(of: $0) }
+        #expect(tints.contains { simd_distance($0, SIMD3(1, 0, 0)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(0, 1, 0)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(0, 0, 1)) < 0.02 })
+
+        // Every face survives the per-color split.
+        let mesh = try #require(model.model?.mesh)
+        let triangleTotal = mesh.contents.models.reduce(0) { sum, m in
+            sum + m.parts.reduce(0) { $0 + ($1.triangleIndices?.count ?? 0) / 3 }
+        }
+        #expect(triangleTotal == 12)
+    }
+
+    @Test func paintWinsOverPropertyColorsOnTheSameTriangle() throws {
+        // The slicer's own view shows the stroke, not the CAD color beneath.
+        let yellow = ColorRGBA(red: 255, green: 255, blue: 0)
+        let paint: [Int?] = Array(repeating: 0, count: 6) + Array(repeating: nil, count: 6)
+        let doc = Self.paintedDocument(
+            mesh: Self.cubeMesh(
+                triangleColors: Array(repeating: yellow, count: 12),
+                paintIndices: paint),
+            filaments: [ColorRGBA(red: 255, green: 0, blue: 0)])
+
+        let scene = SceneBuilder.makeScene(for: doc)
+        let model = try #require(modelEntities(in: try modelSubtree(of: scene)).first)
+        let materials = try #require(model.model?.materials)
+        #expect(materials.count == 2)
+        let tints = try materials.map { try tint(of: $0) }
+        #expect(tints.contains { simd_distance($0, SIMD3(1, 0, 0)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(1, 1, 0)) < 0.02 })
+    }
+
+    @Test func outOfRangePaintFallsBackToFilamentZero() throws {
+        // Lenient like the object-level mapping: a stroke referencing a
+        // filament the project never defined prints on filament 0.
+        let paint: [Int?] = Array(repeating: 7, count: 6) + Array(repeating: nil, count: 6)
+        let doc = Self.paintedDocument(
+            mesh: Self.cubeMesh(paintIndices: paint),
+            filaments: [
+                ColorRGBA(red: 255, green: 0, blue: 0),
+                ColorRGBA(red: 0, green: 255, blue: 0),
+            ],
+            baseFilament: 1)
+
+        let scene = SceneBuilder.makeScene(for: doc)
+        let model = try #require(modelEntities(in: try modelSubtree(of: scene)).first)
+        let materials = try #require(model.model?.materials)
+        #expect(materials.count == 2)
+        let tints = try materials.map { try tint(of: $0) }
+        #expect(tints.contains { simd_distance($0, SIMD3(1, 0, 0)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(0, 1, 0)) < 0.02 })
+    }
+
+    @Test func paintWithoutFilamentDefinitionsFallsBackToTheObjectColor() throws {
+        // A painted mesh stripped of its Slicer Project (or one whose config
+        // lost its filaments) has nothing to map through — the object color
+        // wins over a crash or a phantom palette.
+        let blue = ColorRGBA(red: 0, green: 0, blue: 255)
+        let paint: [Int?] = Array(repeating: 0, count: 12)
+        let doc = Self.cubeDocument(defaultColor: blue)
+        var painted = doc
+        painted.objects[0].content = .mesh(Self.cubeMesh(paintIndices: paint))
+
+        let scene = SceneBuilder.makeScene(for: painted)
+        let model = try #require(modelEntities(in: try modelSubtree(of: scene)).first)
+        let materials = try #require(model.model?.materials)
+        #expect(materials.count == 1)
+        #expect(simd_distance(try tint(of: materials[0]), SIMD3(0, 0, 1)) < 0.02)
     }
 
     // MARK: Slicer Projects
@@ -470,6 +585,49 @@ import ThreeMFViewer
         #expect(abs(extents.x - 0.256) < 1e-4)
         #expect(abs(extents.z - 0.256) < 1e-4)
         #expect(scene.findEntity(named: "Backdrop") == nil)
+    }
+
+    @Test(.enabled(if: corpusHas("slicer-projects/synthetic_painted.3mf")))
+    func corpusPaintedProjectRendersItsPaintColors() throws {
+        // Ground truth by construction (make_slicer_fixtures.py): a cube on
+        // extruder 4 (yellow) painted red / green / blue / yellow, with one
+        // out-of-range stroke that must fall back to filament 0 (red).
+        let url = Self.corpusRoot.appendingPathComponent("slicer-projects/synthetic_painted.3mf")
+        let scene = SceneBuilder.makeScene(for: try ThreeMFParser().parse(fileAt: url))
+
+        let parts = modelEntities(in: try modelSubtree(of: scene)).filter { $0.model != nil }
+        #expect(parts.count == 1)
+        let materials = try #require(parts.first?.model?.materials)
+        #expect(materials.count == 4)
+        let tints = try materials.map { try tint(of: $0) }
+        #expect(tints.contains { simd_distance($0, SIMD3(1, 0, 0)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(0, 1, 0)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(0, 0, 1)) < 0.02 })
+        #expect(tints.contains { simd_distance($0, SIMD3(1, 1, 0)) < 0.02 })
+    }
+
+    @Test(.enabled(if: corpusHas("slicer-projects/Hinged-Locked-Chest_MultiColor.3mf")))
+    func corpusRealPaintedModelRendersBothFilamentColors() throws {
+        // A real painted MakerWorld export (ground truth in the parse-seam
+        // test): base extruder 1 = filament #7D6556, so the six state-1
+        // strokes share the base material and the 12,505 gray strokes
+        // (#A6A9AA) get their own — the chest renders in exactly the two
+        // filament colors, matching the slicer's view.
+        let url = Self.corpusRoot
+            .appendingPathComponent("slicer-projects/Hinged-Locked-Chest_MultiColor.3mf")
+        let scene = SceneBuilder.makeScene(for: try ThreeMFParser().parse(fileAt: url))
+
+        let parts = modelEntities(in: try modelSubtree(of: scene)).filter { $0.model != nil }
+        #expect(parts.count == 1)
+        let materials = try #require(parts.first?.model?.materials)
+        #expect(materials.count == 2)
+        let tints = try materials.map { try tint(of: $0) }
+        #expect(tints.contains {
+            simd_distance($0, SIMD3<Float>(0x7D, 0x65, 0x56) / 255) < 0.02
+        })
+        #expect(tints.contains {
+            simd_distance($0, SIMD3<Float>(0xA6, 0xA9, 0xAA) / 255) < 0.02
+        })
     }
 
     @Test(.enabled(if: corpusHas("slicer-projects/synthetic_multiplate.3mf")))

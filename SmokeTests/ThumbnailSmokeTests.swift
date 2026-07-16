@@ -17,12 +17,20 @@ import UniformTypeIdentifiers
         "com.angusjune.ThreeMFQuickLook.ThumbExt",
     ]
 
-    /// A real vanilla corpus file: with the real parser, a garbage payload
-    /// would (correctly) fail, so the smoke fixture must be a valid package.
-    private static let corpusFile = URL(fileURLWithPath: #filePath)
+    private static let corpusRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()  // strip ThumbnailSmokeTests.swift
         .deletingLastPathComponent()  // strip SmokeTests
-        .appendingPathComponent("Corpus/vanilla/box.3mf")
+        .appendingPathComponent("Corpus")
+
+    /// A real vanilla corpus file: with the real parser, a garbage payload
+    /// would (correctly) fail, so the smoke fixture must be a valid package.
+    private static let corpusFile = corpusRoot.appendingPathComponent("vanilla/box.3mf")
+
+    /// The painted fixture (issue #9) carries no embedded Plate Thumbnail,
+    /// so its thumbnail must come from the mesh-render fallback — the
+    /// surface the paint-color acceptance criterion names.
+    private static let paintedCorpusFile = corpusRoot
+        .appendingPathComponent("slicer-projects/synthetic_painted.3mf")
 
     @Test(
         .timeLimit(.minutes(2)),
@@ -52,6 +60,46 @@ import UniformTypeIdentifiers
         #expect(
             distinctPixelValueCount(in: image) > 1,
             "thumbnail should not be a uniform blank")
+    }
+
+    /// Issue #9: paint colors reach the mesh-render fallback thumbnail. The
+    /// fixture's cube (base filament yellow, faces painted red and green
+    /// among others) must produce clearly red, green, and yellow pixels —
+    /// hue presence, not pixel comparison.
+    @Test(
+        .timeLimit(.minutes(2)),
+        .enabled(if: FileManager.default.fileExists(atPath: paintedCorpusFile.path)))
+    func paintedModelThumbnailShowsItsPaintColors() async throws {
+        try await registerHostApp()
+
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("smoke-painted-\(UUID().uuidString)")
+            .appendingPathExtension("3mf")
+        try FileManager.default.copyItem(at: Self.paintedCorpusFile, to: fixture)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+
+        let request = QLThumbnailGenerator.Request(
+            fileAt: fixture,
+            size: CGSize(width: 256, height: 256),
+            scale: 2,
+            representationTypes: .thumbnail)
+        request.iconMode = false
+
+        let representation = try await QLThumbnailGenerator.shared
+            .generateBestRepresentation(for: request)
+
+        let pixels = rgbaPixels(of: representation.cgImage)
+        func hueCount(_ isHue: (UInt32, UInt32, UInt32) -> Bool) -> Int {
+            pixels.count { pixel in
+                isHue(pixel & 0xFF, (pixel >> 8) & 0xFF, (pixel >> 16) & 0xFF)
+            }
+        }
+        let red = hueCount { r, g, b in r > 120 && r > 2 * g && r > 2 * b }
+        let green = hueCount { r, g, b in g > 120 && g > 2 * r && g > 2 * b }
+        let yellow = hueCount { r, g, b in r > 120 && g > 120 && 2 * b < r && 2 * b < g }
+        #expect(red > 100, "painted red face missing from the thumbnail")
+        #expect(green > 100, "painted green face missing from the thumbnail")
+        #expect(yellow > 100, "base-filament yellow faces missing from the thumbnail")
     }
 
     @Test(.timeLimit(.minutes(2)))
@@ -153,6 +201,12 @@ import UniformTypeIdentifiers
     }
 
     private func distinctPixelValueCount(in image: CGImage) -> Int {
+        Set(rgbaPixels(of: image)).count
+    }
+
+    /// The image as RGBA8 pixel values, red in the low byte; empty when the
+    /// image can't be drawn.
+    private func rgbaPixels(of image: CGImage) -> [UInt32] {
         let width = image.width
         let height = image.height
         var pixels = [UInt32](repeating: 0, count: width * height)
@@ -166,8 +220,7 @@ import UniformTypeIdentifiers
             context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
             return true
         }
-        guard drewImage else { return 0 }
-        return Set(pixels).count
+        return drewImage ? pixels : []
     }
 }
 

@@ -94,7 +94,11 @@ public enum SceneBuilder {
         case .mesh(let mesh):
             // The slicer's plate view shows parts in their filament color, so
             // it wins over any CAD material color the mesh carries.
-            return makeMeshEntity(mesh, name: object.name, color: filamentColor ?? object.defaultColor)
+            return makeMeshEntity(
+                mesh,
+                name: object.name,
+                color: filamentColor ?? object.defaultColor,
+                filaments: slicerProject?.filaments ?? [])
         case .components(let components):
             let parent = Entity()
             parent.name = object.name ?? ""
@@ -116,7 +120,12 @@ public enum SceneBuilder {
     }
 
     @MainActor
-    private static func makeMeshEntity(_ mesh: Mesh, name: String?, color: ColorRGBA?) -> Entity {
+    private static func makeMeshEntity(
+        _ mesh: Mesh,
+        name: String?,
+        color: ColorRGBA?,
+        filaments: [Filament]
+    ) -> Entity {
         let indices = validTriangleIndices(of: mesh)
         guard !mesh.positions.isEmpty, !indices.isEmpty else { return Entity() }
 
@@ -129,18 +138,22 @@ public enum SceneBuilder {
         // color, so partially painted meshes keep both their paint and base.
         let objectNSColor = color.map(nsColor) ?? neutralColor
         let materials: [any RealityKit.Material]
-        if let triangleColors = mesh.triangleColors, triangleColors.count * 3 == indices.count {
+        if let triangleColors = perTriangleColors(of: mesh, filaments: filaments),
+           triangleColors.count * 3 == indices.count {
             var order: [ColorRGBA?] = []
             var indexOfColor: [ColorRGBA?: UInt32] = [:]
             var faceMaterials: [UInt32] = []
             faceMaterials.reserveCapacity(triangleColors.count)
-            for color in triangleColors {
-                if let existing = indexOfColor[color] {
+            for triangleColor in triangleColors {
+                // Dedup on the resolved color, so a triangle painted in the
+                // object's own color shares its material.
+                let resolved = triangleColor ?? color
+                if let existing = indexOfColor[resolved] {
                     faceMaterials.append(existing)
                 } else {
                     let new = UInt32(order.count)
-                    order.append(color)
-                    indexOfColor[color] = new
+                    order.append(resolved)
+                    indexOfColor[resolved] = new
                     faceMaterials.append(new)
                 }
             }
@@ -157,6 +170,28 @@ public enum SceneBuilder {
         let entity = ModelEntity(mesh: resource, materials: materials)
         entity.name = name ?? ""
         return entity
+    }
+
+    /// The mesh's per-triangle color overrides: paint strokes mapped through
+    /// the project's filaments (issue #9) laid over spec property colors —
+    /// the stroke is what the slicer shows, so it wins where both exist.
+    /// Out-of-range strokes fall back to filament 0, like the object-level
+    /// mapping; without filament definitions paint has no meaning and the
+    /// property colors (or the plain object color) stand alone.
+    private static func perTriangleColors(
+        of mesh: Mesh, filaments: [Filament]
+    ) -> [ColorRGBA?]? {
+        guard let paints = mesh.trianglePaintFilamentIndices, !filaments.isEmpty else {
+            return mesh.triangleColors
+        }
+        var colors = mesh.triangleColors ?? Array(repeating: nil, count: paints.count)
+        guard colors.count == paints.count else { return mesh.triangleColors }
+        for (triangle, paint) in paints.enumerated() {
+            guard let paint else { continue }
+            let filament = filaments.indices.contains(paint) ? filaments[paint] : filaments[0]
+            if let color = filament.color { colors[triangle] = color }
+        }
+        return colors
     }
 
     /// Triangles whose indices stay inside the vertex range; corrupt extras
