@@ -38,12 +38,25 @@ import ThreeMFKit
         #expect(content.initialSelectedIndex == 1)
     }
 
-    @Test func selectionFallsBackToTheFirstPlateWithAnImage() {
+    @Test func selectionFallsBackToTheFirstPlateThatSavedAThumbnail() {
         // No plate records objects (a config without model_instance entries):
-        // the first plate that saved an image wins over a bare one.
+        // the first plate that saved a Plate Thumbnail wins over a bare one —
+        // the same rule the Finder icon follows, so the two never disagree.
         let content = SlicedFileContent(document: Self.document(plates: [
             Plate(id: 1),
-            Plate(id: 2, thumbnailData: Self.tinyPNG),
+            Plate(id: 2, thumbnailPartPath: "/Metadata/plate_2.png", thumbnailData: Self.tinyPNG),
+        ]))
+        #expect(content.initialSelectedIndex == 1)
+    }
+
+    @Test func selectionMatchesTheFinderIconWhenTheDefaultPlateSavedNoThumbnail() {
+        // The default Plate (has objects) saved no thumbnail while another
+        // plate did: the icon shows that other plate, so the preview must
+        // open on it too.
+        let ref = ResourceRef(partPath: "/3D/3dmodel.model", id: 2)
+        let content = SlicedFileContent(document: Self.document(plates: [
+            Plate(id: 1, objectRefs: [ref]),
+            Plate(id: 2, thumbnailPartPath: "/Metadata/plate_2.png", thumbnailData: Self.tinyPNG),
         ]))
         #expect(content.initialSelectedIndex == 1)
     }

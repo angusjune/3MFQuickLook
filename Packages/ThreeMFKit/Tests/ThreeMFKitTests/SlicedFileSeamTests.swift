@@ -3,9 +3,9 @@ import Testing
 import ThreeMFKit
 
 /// Parse-seam tests for Sliced Files (issue #8): a `.gcode.3mf` package —
-/// sliced G-code plus plate thumbnails, mesh geometry stripped — is detected
-/// by CONTENT (the G-code parts), never by filename, and exposes its plate
-/// images and print metadata instead of a 3D scene. Ground truth for the
+/// sliced G-code plus Plate Thumbnails, mesh geometry stripped — is detected
+/// by CONTENT (the G-code parts), never by filename, and exposes its Plate
+/// Thumbnails and print metadata instead of a 3D scene. Ground truth for the
 /// synthetic fixtures is by construction (Corpus/tools/make_slicer_fixtures.py
 /// writes these exact values).
 @Suite struct SlicedFileSeamTests {
@@ -13,7 +13,7 @@ import ThreeMFKit
     private static let pngMagic = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
 
     @Test(.enabled(if: Corpus.has("sliced/synthetic_single.gcode.3mf")))
-    func slicedFileExposesPlateImageAndPrintMetadataWithoutGeometry() throws {
+    func slicedFileExposesPlateThumbnailAndPrintMetadataWithoutGeometry() throws {
         let doc = try ThreeMFParser().parse(fileAt: Corpus.url("sliced/synthetic_single.gcode.3mf"))
 
         #expect(doc.isSlicedFile)
@@ -35,7 +35,7 @@ import ThreeMFKit
     }
 
     @Test(.enabled(if: Corpus.has("sliced/synthetic_multiplate.gcode.3mf")))
-    func multiPlateSlicedFileExposesEveryPlateImageAndPrediction() throws {
+    func multiPlateSlicedFileExposesEveryPlateThumbnailAndPrediction() throws {
         let doc = try ThreeMFParser().parse(
             fileAt: Corpus.url("sliced/synthetic_multiplate.gcode.3mf"))
 
@@ -50,8 +50,8 @@ import ThreeMFKit
         #expect(slicer.plates.map(\.id) == [1, 2])
         #expect(slicer.plates.map(\.estimatedPrintTime) == [3600, 7245])
         #expect(slicer.plates.map(\.usedFilamentIndices) == [[0], [1]])
-        // Both plate images come out with the parse, so the Filmstrip and the
-        // full-size view never re-open the package.
+        // Both Plate Thumbnails come out with the parse, so the Filmstrip and
+        // the full-size view never re-open the package.
         #expect(slicer.plates[0].thumbnailData?.prefix(8) == Self.pngMagic)
         #expect(slicer.plates[1].thumbnailData?.prefix(8) == Self.pngMagic)
         #expect(slicer.plates[0].thumbnailData != slicer.plates[1].thumbnailData)
@@ -90,10 +90,10 @@ import ThreeMFKit
     }
 
     /// The Finder-icon criterion: a Sliced File's Embedded Thumbnail is its
-    /// plate image, through the same cheap extraction seam as every other
-    /// flavor.
+    /// Plate Thumbnail, through the same cheap extraction seam as every
+    /// other flavor.
     @Test(.enabled(if: Corpus.has("sliced/synthetic_single.gcode.3mf")))
-    func slicedFileYieldsItsPlateImageAsEmbeddedThumbnail() throws {
+    func slicedFileYieldsItsPlateThumbnailAsEmbeddedThumbnail() throws {
         let thumbnail = try #require(try ThreeMFParser()
             .embeddedThumbnail(fileAt: Corpus.url("sliced/synthetic_single.gcode.3mf")))
         #expect(thumbnail.partPath == "/Metadata/plate_1.png")
@@ -133,6 +133,50 @@ import ThreeMFKit
         #expect(doc.objects.isEmpty)
         #expect(doc.slicerProject?.plates.first?.thumbnailData
             == Self.pngMagic + Data("fake-plate-image".utf8))
+    }
+
+    /// Only slicer-written `Metadata/` G-code marks a Sliced File: a real
+    /// project that merely carries a stray G-code attachment elsewhere in
+    /// the package keeps its geometry — and its 3D preview.
+    @Test func strayGCodeOutsideMetadataDoesNotMarkASlicedFile() throws {
+        let url = try writeTemporaryPackage(named: "stray-gcode-project", parts: [
+            ("_rels/.rels", Data("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+             <Relationship Target="/3D/3dmodel.model" Id="rel-1" \
+            Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+            </Relationships>
+            """.utf8)),
+            ("3D/3dmodel.model", Data("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+             <resources>
+              <object id="1" type="model">
+               <mesh>
+                <vertices>
+                 <vertex x="0" y="0" z="0"/>
+                 <vertex x="10" y="0" z="0"/>
+                 <vertex x="0" y="10" z="0"/>
+                </vertices>
+                <triangles>
+                 <triangle v1="0" v2="1" v3="2"/>
+                </triangles>
+               </mesh>
+              </object>
+             </resources>
+             <build>
+              <item objectid="1"/>
+             </build>
+            </model>
+            """.utf8)),
+            ("Auxiliaries/notes.gcode", Data("; someone's attached G-code\nG28\n".utf8)),
+        ])
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let doc = try ThreeMFParser().parse(fileAt: url)
+        #expect(!doc.isSlicedFile)
+        #expect(doc.objects.count == 1)
+        #expect(doc.objects.first?.mesh?.triangleCount == 1)
     }
 
     /// A sliced config whose plates carry no `model_instance` entries has no

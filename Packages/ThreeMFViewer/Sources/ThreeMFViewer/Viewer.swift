@@ -27,7 +27,7 @@ public struct Viewer: View {
     public init(document: ThreeMFDocument) {
         self.document = document
         self.filmstripCells = PlateFilmstrip.plates(of: document).map {
-            PlateFilmstrip.Cell(plate: $0, thumbnail: $0.thumbnailData.flatMap(NSImage.init(data:)))
+            PlateFilmstrip.Cell(plate: $0)
         }
         let scene = SceneBuilder.makeScene(for: document)
         _scene = State(initialValue: scene)

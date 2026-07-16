@@ -32,9 +32,10 @@ final class ThumbnailProvider: QLThumbnailProvider {
                 }
 
                 // No embedded image: render the mesh offscreen. A Sliced
-                // File that reaches this point has no plate image to show
-                // and no geometry to render (stripped by definition) — the
-                // generic icon is the honest fallback, never an empty scene.
+                // File that reaches this point has no Plate Thumbnail to
+                // show and no geometry to render (stripped by definition) —
+                // the generic icon is the honest fallback, never an empty
+                // scene.
                 let document = try ThreeMFParser().parse(fileAt: fileURL)
                 guard !document.isSlicedFile else {
                     logger.info("sliced file without plate image: \(fileURL.lastPathComponent, privacy: .public)")

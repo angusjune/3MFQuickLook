@@ -22,11 +22,11 @@
   configs. Must parse as Vanilla-plus (document.slicer == nil).
 - sliced/synthetic_single.gcode.3mf — a Bambu-style Sliced File (issue #8):
   geometry-stripped root model, ONE sliced plate with its G-code part
-  (Metadata/plate_1.gcode), plate image (6x6 solid blue), prediction 3720 s,
-  one filament (#00AE42 PLA), printer_model "Bambu Lab P1S".
+  (Metadata/plate_1.gcode), Plate Thumbnail (6x6 solid blue), prediction
+  3720 s, one filament (#00AE42 PLA), printer_model "Bambu Lab P1S".
 - sliced/synthetic_multiplate.gcode.3mf — a Sliced File with TWO sliced
-  plates (predictions 3600 s / 7245 s, red and green 4x4 plate images, each
-  using one of the two filaments #FF0000 PLA / #0000FF PETG),
+  plates (predictions 3600 s / 7245 s, red and green 4x4 Plate Thumbnails,
+  each using one of the two filaments #FF0000 PLA / #0000FF PETG),
   printer_model "Bambu Lab X1 Carbon".
 
 The values written here are the ground truth the parse-seam tests assert;

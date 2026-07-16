@@ -35,6 +35,11 @@ Screenshot/click via the computer-use MCP (request access to
   topper (unsliced, extruders 2 and 1). Ground truth by construction:
   `Corpus/tools/make_slicer_fixtures.py`.
 - `Corpus/vanilla/box.3mf` — 10 × 20 × 30 mm box, no slicer metadata.
+- `Corpus/sliced/synthetic_single.gcode.3mf` — Sliced File: blue plate
+  image, "Bambu Lab P1S · 1h 2m", green filament dot, no filmstrip.
+- `Corpus/sliced/synthetic_multiplate.gcode.3mf` — Sliced File, 2 plates:
+  red image "1h" red dot / green image "2h 1m" blue dot, filmstrip,
+  "Bambu Lab X1 Carbon". Both must NEVER show a 3D scene.
 
 ## Drive the Quick Look panel
 

@@ -58,6 +58,18 @@ struct PlateFilmstrip: View {
     }
 }
 
+extension PlateFilmstrip.Cell {
+    /// The cell for one Plate, its Plate Thumbnail decoded here and never
+    /// again — shared by the Viewer and the sliced-file preview so the
+    /// decode-once rule lives in one place. In an extension so the
+    /// memberwise initializer survives, and on `Cell` rather than the View:
+    /// View members are `@MainActor` (the swift-testing trap) and cell
+    /// building is pure model work.
+    init(plate: Plate) {
+        self.init(plate: plate, thumbnail: plate.thumbnailData.flatMap(NSImage.init(data:)))
+    }
+}
+
 /// One clickable Plate Thumbnail; a Plate without a saved thumbnail shows its
 /// number on a quiet placeholder instead.
 private struct PlateCellView: View {

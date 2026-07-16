@@ -26,15 +26,12 @@ struct InfoLineContent: Equatable {
     /// ``ThreeMFDocument/usedFilamentIndices(for:)``.
     init(for document: ThreeMFDocument, plate: Plate?) {
         let metrics = document.sceneMetrics(for: plate)
-        let filaments = document.slicerProject?.filaments ?? []
         printerModel = nil
         dimensions = metrics.sizeMillimeters.map(Self.dimensionsText)
         objectCount = Self.objectCountText(metrics.objectCount)
         printTime = (document.stagedPlate(for: plate)?.estimatedPrintTime)
             .map(Self.printTimeText)
-        // usedFilamentIndices only returns valid indices into filaments.
-        filamentColors = document.usedFilamentIndices(for: plate)
-            .compactMap { filaments[$0].color }
+        filamentColors = Self.filamentDots(for: plate, in: document)
     }
 
     /// The segments for a Sliced File's plate (issue #8): printer model,
@@ -42,13 +39,18 @@ struct InfoLineContent: Equatable {
     /// dimensions or object count — the geometry they would describe is
     /// stripped from these packages.
     init(forSlicedPlate plate: Plate?, in document: ThreeMFDocument) {
-        let filaments = document.slicerProject?.filaments ?? []
         printerModel = document.slicerProject?.printerModel
         dimensions = nil
         objectCount = nil
         printTime = plate?.estimatedPrintTime.map(Self.printTimeText)
-        filamentColors = document.usedFilamentIndices(for: plate)
-            .compactMap { filaments[$0].color }
+        filamentColors = Self.filamentDots(for: plate, in: document)
+    }
+
+    /// The dot colors for a Plate's scene, in extruder order.
+    /// usedFilamentIndices only returns valid indices into filaments.
+    private static func filamentDots(for plate: Plate?, in document: ThreeMFDocument) -> [ColorRGBA] {
+        let filaments = document.slicerProject?.filaments ?? []
+        return document.usedFilamentIndices(for: plate).compactMap { filaments[$0].color }
     }
 
     // MARK: Formatting

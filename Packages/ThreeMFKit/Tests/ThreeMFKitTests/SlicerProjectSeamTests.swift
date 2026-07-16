@@ -173,6 +173,26 @@ import ThreeMFKit
         #expect(info.defaultPlateIndex == nil)
     }
 
+    @Test func thumbnailPlateIndexPrefersTheDefaultPlateThenAnyThatSavedOne() {
+        let ref = ResourceRef(partPath: Self.rootPart, id: 2)
+        let bare = Plate(id: 1)
+        let withObjects = Plate(id: 2, objectRefs: [ref])
+        let withBoth = Plate(
+            id: 2, objectRefs: [ref], thumbnailPartPath: "/Metadata/plate_2.png")
+        let withThumbnail = Plate(id: 3, thumbnailPartPath: "/Metadata/plate_3.png")
+
+        // The default Plate wins when it saved a thumbnail…
+        #expect(SlicerProjectInfo(plates: [withThumbnail, withBoth])
+            .thumbnailPlateIndex == 1)
+        // …else the first Plate that saved one stands in…
+        #expect(SlicerProjectInfo(plates: [bare, withObjects, withThumbnail])
+            .thumbnailPlateIndex == 2)
+        #expect(SlicerProjectInfo(plates: [bare, withThumbnail])
+            .thumbnailPlateIndex == 1)
+        // …and no thumbnails anywhere means no index.
+        #expect(SlicerProjectInfo(plates: [bare, withObjects]).thumbnailPlateIndex == nil)
+    }
+
     @Test(.enabled(if: Corpus.has("slicer-projects/synthetic_prusa.3mf")))
     func prusaProjectStaysVanillaPlusButParsesGeometry() throws {
         let doc = try ThreeMFParser().parse(

@@ -58,7 +58,8 @@ public struct ThreeMFParser: Sendable {
         // parts are empty by construction and are never parsed, so a mangled
         // one can't surface an error where an honest preview is possible.
         if package.containsGCodePart() {
-            let rootPath = (try? package.rootModelPartPath()) ?? "/3D/3dmodel.model"
+            let rootPath = (try? package.rootModelPartPath())
+                ?? OPCPackage.conventionalRootModelPath
             return ThreeMFDocument(
                 slicerProject: SlicerMetadataParser.parse(
                     package: package, rootPartPath: rootPath, objects: []),

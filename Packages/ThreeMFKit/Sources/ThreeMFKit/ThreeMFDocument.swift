@@ -14,10 +14,10 @@ public struct ThreeMFDocument: Equatable, Sendable {
     /// (CONTEXT.md).
     public var slicerProject: SlicerProjectInfo?
     /// Whether the package is a Sliced File (CONTEXT.md): sliced G-code plus
-    /// plate thumbnails, mesh geometry stripped. Detected by content (the
-    /// G-code parts), never by filename. Sliced Files preview as their plate
-    /// images plus print metadata — never as a 3D scene — so `objects` and
-    /// `buildItems` are always empty when this is true.
+    /// Plate Thumbnails, mesh geometry stripped. Detected by content (the
+    /// G-code parts), never by filename. Sliced Files preview as their Plate
+    /// Thumbnails plus print metadata — never as a 3D scene — so `objects`
+    /// and `buildItems` are always empty when this is true.
     public var isSlicedFile: Bool
 
     public init(
@@ -98,6 +98,20 @@ public struct SlicerProjectInfo: Equatable, Sendable {
     /// `plater_id` values are not guaranteed unique in malformed files.
     public var defaultPlateIndex: Int? {
         plates.firstIndex { !$0.objectRefs.isEmpty }
+    }
+
+    /// Index of the Plate whose Plate Thumbnail stands for the whole
+    /// package: the default Plate when it recorded one, else the first
+    /// Plate that did; nil when no Plate has a thumbnail. The Finder icon
+    /// and the sliced-file preview's opening Plate share this one rule
+    /// (issue #8), so the two surfaces never disagree — a Sliced File whose
+    /// config lost its `model_instance` entries has no default Plate, yet
+    /// must still show its Plate Thumbnails.
+    public var thumbnailPlateIndex: Int? {
+        if let index = defaultPlateIndex, plates[index].thumbnailPartPath != nil {
+            return index
+        }
+        return plates.firstIndex { $0.thumbnailPartPath != nil }
     }
 
     /// The filament color the project explicitly assigns to the object (or

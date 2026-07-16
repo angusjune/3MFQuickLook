@@ -68,12 +68,22 @@ final class OPCPackage {
         return try? partData(at: partPath)
     }
 
+    /// Where slicers conventionally place the root model part. Only a
+    /// fallback for packages whose relationships part is unreadable — an
+    /// intact package names its root via ``rootModelPartPath()``.
+    static let conventionalRootModelPath = "/3D/3dmodel.model"
+
     /// Whether the package carries sliced G-code — the content marker of a
     /// Sliced File (CONTEXT.md). Slicers write one `Metadata/plate_N.gcode`
-    /// per sliced plate; nothing else puts `.gcode` parts in a 3MF package.
-    /// Deliberately independent of the package's filename.
+    /// per sliced plate; requiring the `Metadata/` home keeps a stray
+    /// G-code attachment elsewhere (e.g. `Auxiliaries/`) from costing a
+    /// real project its 3D preview. Deliberately independent of the
+    /// package's filename.
     func containsGCodePart() -> Bool {
-        archive.contains { $0.path.lowercased().hasSuffix(".gcode") }
+        archive.contains {
+            let path = $0.path.lowercased()
+            return path.hasPrefix("metadata/") && path.hasSuffix(".gcode")
+        }
     }
 
     /// The package's root model part, from the `_rels/.rels` relationship of

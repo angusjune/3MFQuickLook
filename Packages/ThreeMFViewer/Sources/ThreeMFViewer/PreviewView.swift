@@ -7,8 +7,8 @@ import ThreeMFKit
 /// interactive ``Viewer`` when the scene is ready. Files with no embedded
 /// image show a neutral loading state instead, then crossfade the same way.
 /// There is no blank panel at any point. Sliced Files crossfade to
-/// ``SlicedFileView`` instead — plate images and print metadata, never a 3D
-/// scene (issue #8).
+/// ``SlicedFileView`` instead — Plate Thumbnails and print metadata, never
+/// a 3D scene (issue #8).
 ///
 /// Shared by the Preview Extension and the Host App: both hand it a
 /// pre-extracted static image and a parse closure.
@@ -102,7 +102,7 @@ public struct PreviewView: View {
         case failure
         case viewer(ThreeMFDocument)
         /// Sliced Files never reach the 3D viewer — their honest preview is
-        /// the plate images plus print metadata.
+        /// the Plate Thumbnails plus print metadata.
         case slicedFile(ThreeMFDocument)
     }
 
