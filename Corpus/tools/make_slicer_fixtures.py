@@ -20,6 +20,11 @@
 - slicer-projects/synthetic_prusa.3mf — a PrusaSlicer-style project: plain
   core-spec root model plus Metadata/Slic3r_PE*.config parts and NO Bambu
   configs. Must parse as Vanilla-plus (document.slicer == nil).
+- slicer-projects/synthetic_painted.3mf — a painted multicolor project
+  (issue #9): FOUR filaments (#FF0000 / #00FF00 / #0000FF / #FFFF00), one
+  plate, one cube on the object-level extruder 4 whose triangles carry
+  Bambu/Orca paint_color strokes. The values cover every encoding shape
+  (see PAINTED_CUBE_PAINTS); triangles 0-3 are unpainted.
 - sliced/synthetic_single.gcode.3mf — a Bambu-style Sliced File (issue #8):
   geometry-stripped root model, ONE sliced plate with its G-code part
   (Metadata/plate_1.gcode), Plate Thumbnail (6x6 solid blue), prediction
@@ -71,8 +76,11 @@ def solid_png(width, height, rgb):
             + chunk(b"IEND", b""))
 
 
-def cube_mesh_xml(size):
-    """An axis-aligned cube [0, size]^3: 8 vertices, 12 triangles."""
+def cube_mesh_xml(size, paints=None):
+    """An axis-aligned cube [0, size]^3: 8 vertices, 12 triangles.
+
+    paints: optional {triangle index: paint_color attribute value}.
+    """
     vs = []
     for z in (0, size):
         for y in (0, size):
@@ -81,7 +89,10 @@ def cube_mesh_xml(size):
     tris = [(0, 2, 1), (1, 2, 3), (4, 5, 6), (5, 7, 6),
             (0, 1, 4), (1, 5, 4), (2, 6, 3), (3, 6, 7),
             (0, 4, 2), (2, 4, 6), (1, 3, 5), (3, 7, 5)]
-    ts = [f'     <triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in tris]
+    ts = []
+    for i, (a, b, c) in enumerate(tris):
+        paint = f' paint_color="{paints[i]}"' if paints and i in paints else ""
+        ts.append(f'     <triangle v1="{a}" v2="{b}" v3="{c}"{paint}/>')
     return "\n".join(vs), "\n".join(ts)
 
 
@@ -264,6 +275,75 @@ PRUSA_MODEL_CONFIG = """<?xml version="1.0" encoding="UTF-8"?>
   </volume>
  </object>
 </config>
+"""
+
+
+# --- Painted project (issue #9) -------------------------------------------
+# paint_color values are the PrusaSlicer TriangleSelector bitstream Bambu
+# Studio / OrcaSlicer write: hex nibbles in REVERSE order (decoders read the
+# string back to front). Each node is one nibble — low 2 bits = number of
+# split sides (0 = leaf), high 2 bits = leaf state, with 0b11 marking "next
+# nibble holds state − 3"; split nodes are followed by their children,
+# depth-first. State N paints filament N (1-based); state 0 is unpainted.
+# The parse-seam tests assert these exact dominant filament indices.
+
+PAINTED_CUBE_PAINTS = {
+    # triangles 0-3 carry no paint_color at all
+    4: "4",       # leaf state 1 → filament index 0
+    5: "8",       # leaf state 2 → filament index 1
+    6: "0C",      # extended leaf state 3 → filament index 2
+    7: "1C",      # extended leaf state 4 → filament index 3
+    8: "8442",    # 3-way split, children states 1,1,2 → dominant index 0
+    9: "81C1C2",  # 3-way split, extended children 4,4,2 → dominant index 3
+    10: "2C",     # extended leaf state 5 → filament index 4 (out of range)
+    11: "4002",   # 3-way split, children 0,0,1 → dominantly unpainted
+}
+
+PAINTED_ROOT_MODEL = """<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p">
+ <metadata name="Application">synthetic-painted-fixture</metadata>
+ <resources>
+  <object id="2" type="model">
+   <components>
+    <component p:path="/3D/Objects/object_1.model" objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>
+   </components>
+  </object>
+ </resources>
+ <build>
+  <item objectid="2" transform="1 0 0 0 1 0 0 0 1 80 80 0" printable="1"/>
+ </build>
+</model>
+"""
+
+PAINTED_MODEL_RELS = """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Target="/3D/Objects/object_1.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>
+"""
+
+PAINTED_MODEL_SETTINGS = """<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="2">
+    <metadata key="name" value="PaintedCube"/>
+    <metadata key="extruder" value="4"/>
+  </object>
+  <plate>
+    <metadata key="plater_id" value="1"/>
+    <metadata key="plater_name" value=""/>
+    <model_instance>
+      <metadata key="object_id" value="2"/>
+      <metadata key="instance_id" value="0"/>
+    </model_instance>
+  </plate>
+</config>
+"""
+
+PAINTED_PROJECT_SETTINGS = """{
+  "filament_colour": ["#FF0000", "#00FF00", "#0000FF", "#FFFF00"],
+  "filament_type": ["PLA", "PLA", "PLA", "PLA"],
+  "printable_area": ["0x0", "180x0", "180x180", "0x180"],
+  "printable_height": "180"
+}
 """
 
 
@@ -452,6 +532,17 @@ def main():
         ("Metadata/project_settings.config", MULTIPLATE_PROJECT_SETTINGS),
         ("Metadata/slice_info.config", MULTIPLATE_SLICE_INFO),
         ("Metadata/plate_2.png", solid_png(4, 4, (255, 0, 0))),
+    ])
+
+    write_fixture(os.path.join(OUT_DIR, "synthetic_painted.3mf"), [
+        ("[Content_Types].xml", CONTENT_TYPES),
+        ("_rels/.rels", ROOT_RELS),
+        ("3D/3dmodel.model", PAINTED_ROOT_MODEL),
+        ("3D/_rels/3dmodel.model.rels", PAINTED_MODEL_RELS),
+        ("3D/Objects/object_1.model", object_part(
+            (1, cube_mesh_xml(20, paints=PAINTED_CUBE_PAINTS)))),
+        ("Metadata/model_settings.config", PAINTED_MODEL_SETTINGS),
+        ("Metadata/project_settings.config", PAINTED_PROJECT_SETTINGS),
     ])
 
     vertices, triangles = cube_mesh_xml(10)

@@ -256,13 +256,29 @@ public struct Mesh: Equatable, Sendable {
     /// entries are nil for triangles without one (partially painted meshes),
     /// which render in the object's color. Count matches `triangleCount`.
     public var triangleColors: [ColorRGBA?]?
+    /// Bambu/Orca paint strokes (`paint_color`), as each painted triangle's
+    /// dominant 0-based index into ``SlicerProjectInfo/filaments`` — the
+    /// PRD's approximation: no sub-triangle segmentation, so a triangle
+    /// painted in several colors keeps the one covering the most area.
+    /// Entries are nil for unpainted triangles (they render in the object's
+    /// color); the whole array is nil when nothing is painted. Indices are
+    /// exposed as the file records them, out of range or not — mapping them
+    /// to colors, with its leniency, is the scene builder's job. Count
+    /// matches `triangleCount`.
+    public var trianglePaintFilamentIndices: [Int?]?
 
     public var triangleCount: Int { triangleIndices.count / 3 }
 
-    public init(positions: [SIMD3<Float>] = [], triangleIndices: [UInt32] = [], triangleColors: [ColorRGBA?]? = nil) {
+    public init(
+        positions: [SIMD3<Float>] = [],
+        triangleIndices: [UInt32] = [],
+        triangleColors: [ColorRGBA?]? = nil,
+        trianglePaintFilamentIndices: [Int?]? = nil
+    ) {
         self.positions = positions
         self.triangleIndices = triangleIndices
         self.triangleColors = triangleColors
+        self.trianglePaintFilamentIndices = trianglePaintFilamentIndices
     }
 }
 

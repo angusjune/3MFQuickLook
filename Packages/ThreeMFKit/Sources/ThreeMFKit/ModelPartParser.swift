@@ -36,7 +36,10 @@ struct ModelPart {
                 content = .mesh(Mesh(
                     positions: raw.positions,
                     triangleIndices: raw.indices,
-                    triangleColors: resolvedTriangleColors(of: raw, defaultColor: defaultColor)))
+                    triangleColors: resolvedTriangleColors(of: raw, defaultColor: defaultColor),
+                    trianglePaintFilamentIndices: raw.hasPaintedTriangles
+                        ? raw.triPaintStates.map { $0 == 0 ? nil : Int($0) - 1 }
+                        : nil))
             }
             return ObjectResource(
                 ref: ResourceRef(partPath: partPath, id: raw.id),
@@ -89,6 +92,10 @@ struct RawObject {
     var hasTriangleProperties = false
     var triPropertyGroups: [UInt32] = []
     var triPropertyIndices: [UInt32] = []
+    /// Dominant `paint_color` states, aligned per triangle once any triangle
+    /// carries a stroke (`hasPaintedTriangles`); 0 marks unpainted triangles.
+    var hasPaintedTriangles = false
+    var triPaintStates: [UInt32] = []
     var components: [RawComponent] = []
     var hasComponents = false
 }
@@ -339,6 +346,18 @@ final class ModelPartSAXParser {
             object.triPropertyGroups.append(pid ?? ModelPart.noProperty)
             object.triPropertyIndices.append(p1 ?? ModelPart.noProperty)
         }
+
+        // Bambu/Orca paint strokes, reduced to the dominant state right here
+        // so the encoded string is never stored. Strokes that resolve to
+        // "entirely bare" (state 0) don't materialize the array.
+        let paintState = attrs.withRawValue("paint_color", PaintColor.dominantState) ?? 0
+        if paintState != 0 && !object.hasPaintedTriangles {
+            object.hasPaintedTriangles = true
+            object.triPaintStates = Array(repeating: 0, count: triangleCount - 1)
+        }
+        if object.hasPaintedTriangles {
+            object.triPaintStates.append(paintState)
+        }
     }
 
     // MARK: Name/namespace matching (no per-call allocation)
@@ -381,6 +400,11 @@ private struct SAXAttributes {
 
     func string(_ name: StaticString) -> String? {
         value(name).map { String(decoding: UnsafeBufferPointer(start: $0.start, count: $0.count), as: UTF8.self) }
+    }
+
+    /// The attribute's raw bytes, handed to `body` without allocating.
+    func withRawValue<R>(_ name: StaticString, _ body: (UnsafeBufferPointer<UInt8>) -> R) -> R? {
+        value(name).map { body(UnsafeBufferPointer(start: $0.start, count: $0.count)) }
     }
 
     func uint(_ name: StaticString) -> UInt32? {
