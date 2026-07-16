@@ -53,6 +53,19 @@ public struct ThreeMFParser: Sendable {
     }
 
     private func parse(package: OPCPackage) throws -> ThreeMFDocument {
+        // Sliced File (CONTEXT.md): sliced G-code plus plate thumbnails, mesh
+        // geometry stripped. Its configs are the whole content — the model
+        // parts are empty by construction and are never parsed, so a mangled
+        // one can't surface an error where an honest preview is possible.
+        if package.containsGCodePart() {
+            let rootPath = (try? package.rootModelPartPath())
+                ?? OPCPackage.conventionalRootModelPath
+            return ThreeMFDocument(
+                slicerProject: SlicerMetadataParser.parse(
+                    package: package, rootPartPath: rootPath, objects: []),
+                isSlicedFile: true)
+        }
+
         let rootPath = try package.rootModelPartPath()
 
         var parts: [String: ModelPart] = [:]

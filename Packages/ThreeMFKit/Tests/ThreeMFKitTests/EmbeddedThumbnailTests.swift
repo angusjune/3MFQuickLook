@@ -1,7 +1,6 @@
 import Foundation
 import Testing
 import ThreeMFKit
-import ZIPFoundation
 
 /// Parse-seam tests for Embedded Thumbnail extraction (issue #5): given this
 /// package, the parser yields this embedded image — cheaply, without parsing
@@ -53,7 +52,7 @@ import ZIPFoundation
     /// though a full parse of the same package throws.
     @Test func extractionSkipsGeometryEvenWhenTheModelPartIsUnparseable() throws {
         let png = Self.pngMagic + Data("fake-image-body".utf8)
-        let url = try writePackage(parts: [
+        let url = try writeTemporaryPackage(named: "embedded-thumbnail", parts: [
             ("_rels/.rels", Data("""
             <?xml version="1.0" encoding="UTF-8"?>
             <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -79,6 +78,50 @@ import ZIPFoundation
         }
     }
 
+    /// The sliced-only scope of the any-plate fallback (issue #8): a REGULAR
+    /// project (no G-code) whose default plate saved no thumbnail keeps the
+    /// strict rule — another plate's thumbnail never stands in; the OPC
+    /// Package Thumbnail does.
+    @Test func regularProjectNeverBorrowsAnotherPlatesThumbnail() throws {
+        let png = Self.pngMagic + Data("opc-package-thumbnail".utf8)
+        let url = try writeTemporaryPackage(named: "strict-default-plate", parts: [
+            ("_rels/.rels", Data("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+             <Relationship Target="/3D/3dmodel.model" Id="rel-1" \
+            Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+             <Relationship Target="/Metadata/thumbnail.png" Id="rel-2" \
+            Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"/>
+            </Relationships>
+            """.utf8)),
+            ("3D/3dmodel.model", Data("<model/>".utf8)),
+            // Plate 1 (the default: it has the objects) saved no thumbnail;
+            // plate 2 saved one but has no objects.
+            ("Metadata/model_settings.config", Data("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <config>
+              <plate>
+                <metadata key="plater_id" value="1"/>
+                <model_instance>
+                  <metadata key="object_id" value="2"/>
+                </model_instance>
+              </plate>
+              <plate>
+                <metadata key="plater_id" value="2"/>
+                <metadata key="thumbnail_file" value="Metadata/plate_2.png"/>
+              </plate>
+            </config>
+            """.utf8)),
+            ("Metadata/plate_2.png", Self.pngMagic + Data("plate-2-thumbnail".utf8)),
+            ("Metadata/thumbnail.png", png),
+        ])
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let thumbnail = try #require(try ThreeMFParser().embeddedThumbnail(fileAt: url))
+        #expect(thumbnail.partPath == "/Metadata/thumbnail.png")
+        #expect(thumbnail.data == png)
+    }
+
     /// The "instant first paint" property, empirically: on a large real
     /// Slicer Project, pulling the Embedded Thumbnail costs a small fraction of
     /// a full parse — because it never streams geometry. A full parse of this
@@ -102,19 +145,4 @@ import ZIPFoundation
         #expect(extractTime < parseTime / 10)
     }
 
-    /// Writes a 3MF package from raw (path, bytes) parts.
-    private func writePackage(parts: [(String, Data)]) throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("embedded-thumbnail-\(UUID().uuidString)")
-            .appendingPathExtension("3mf")
-        let archive = try Archive(url: url, accessMode: .create)
-        for (path, data) in parts {
-            try archive.addEntry(
-                with: path, type: .file, uncompressedSize: Int64(data.count),
-                provider: { position, size in
-                    data.subdata(in: Int(position)..<Int(position) + size)
-                })
-        }
-        return url
-    }
 }

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import ThreeMFKit
+import ZIPFoundation
 
 /// Locates the repo's `Corpus/` directory relative to this source file.
 /// Corpus binaries are gitignored, so tests that need one skip (via
@@ -21,6 +22,23 @@ enum Corpus {
     static func has(_ relativePath: String) -> Bool {
         FileManager.default.fileExists(atPath: url(relativePath).path)
     }
+}
+
+/// Writes a throwaway 3MF package from raw (path, bytes) parts, for tests
+/// that need a package no real tool would write. Callers remove the file.
+func writeTemporaryPackage(named name: String, parts: [(String, Data)]) throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("\(name)-\(UUID().uuidString)")
+        .appendingPathExtension("3mf")
+    let archive = try Archive(url: url, accessMode: .create)
+    for (path, data) in parts {
+        try archive.addEntry(
+            with: path, type: .file, uncompressedSize: Int64(data.count),
+            provider: { position, size in
+                data.subdata(in: Int(position)..<Int(position) + size)
+            })
+    }
+    return url
 }
 
 extension Mesh {

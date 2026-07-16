@@ -16,10 +16,12 @@ import ThreeMFKit
         let doc = try ThreeMFParser().parse(fileAt: Corpus.url("slicer-projects/FlightScnr.3mf"))
         let slicer = try #require(doc.slicerProject)
 
-        // project_settings.config: filament_colour ["#000000"], filament_type ["PLA"].
+        // project_settings.config: filament_colour ["#000000"], filament_type
+        // ["PLA"], printer_model "Bambu Lab X1 Carbon".
         #expect(slicer.filaments.count == 1)
         #expect(slicer.filaments.first?.color == ColorRGBA(red: 0, green: 0, blue: 0))
         #expect(slicer.filaments.first?.type == "PLA")
+        #expect(slicer.printerModel == "Bambu Lab X1 Carbon")
 
         // model_settings.config: one <plate> (plater_id 1, empty plater_name)
         // holding model_instances for objects 2, 4, 6.
@@ -169,6 +171,26 @@ import ThreeMFKit
         let info = SlicerProjectInfo(plates: [Plate(id: 1), Plate(id: 2)])
         #expect(info.defaultPlate == nil)
         #expect(info.defaultPlateIndex == nil)
+    }
+
+    @Test func thumbnailPlateIndexPrefersTheDefaultPlateThenAnyThatSavedOne() {
+        let ref = ResourceRef(partPath: Self.rootPart, id: 2)
+        let bare = Plate(id: 1)
+        let withObjects = Plate(id: 2, objectRefs: [ref])
+        let withBoth = Plate(
+            id: 2, objectRefs: [ref], thumbnailPartPath: "/Metadata/plate_2.png")
+        let withThumbnail = Plate(id: 3, thumbnailPartPath: "/Metadata/plate_3.png")
+
+        // The default Plate wins when it saved a thumbnail…
+        #expect(SlicerProjectInfo(plates: [withThumbnail, withBoth])
+            .thumbnailPlateIndex == 1)
+        // …else the first Plate that saved one stands in…
+        #expect(SlicerProjectInfo(plates: [bare, withObjects, withThumbnail])
+            .thumbnailPlateIndex == 2)
+        #expect(SlicerProjectInfo(plates: [bare, withThumbnail])
+            .thumbnailPlateIndex == 1)
+        // …and no thumbnails anywhere means no index.
+        #expect(SlicerProjectInfo(plates: [bare, withObjects]).thumbnailPlateIndex == nil)
     }
 
     @Test(.enabled(if: Corpus.has("slicer-projects/synthetic_prusa.3mf")))

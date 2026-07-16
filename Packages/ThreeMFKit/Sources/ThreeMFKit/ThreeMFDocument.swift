@@ -13,17 +13,25 @@ public struct ThreeMFDocument: Equatable, Sendable {
     /// Vanilla files — including PrusaSlicer projects, which are Vanilla-plus
     /// (CONTEXT.md).
     public var slicerProject: SlicerProjectInfo?
+    /// Whether the package is a Sliced File (CONTEXT.md): sliced G-code plus
+    /// Plate Thumbnails, mesh geometry stripped. Detected by content (the
+    /// G-code parts), never by filename. Sliced Files preview as their Plate
+    /// Thumbnails plus print metadata — never as a 3D scene — so `objects`
+    /// and `buildItems` are always empty when this is true.
+    public var isSlicedFile: Bool
 
     public init(
         unit: LengthUnit = .millimeter,
         objects: [ObjectResource] = [],
         buildItems: [BuildItem] = [],
-        slicerProject: SlicerProjectInfo? = nil
+        slicerProject: SlicerProjectInfo? = nil,
+        isSlicedFile: Bool = false
     ) {
         self.unit = unit
         self.objects = objects
         self.buildItems = buildItems
         self.slicerProject = slicerProject
+        self.isSlicedFile = isSlicedFile
     }
 
     public func object(_ ref: ResourceRef) -> ObjectResource? {
@@ -61,17 +69,22 @@ public struct SlicerProjectInfo: Equatable, Sendable {
     /// The printable bed rectangle (model units), from `printable_area`;
     /// nil when the project doesn't record one.
     public var plateRect: PlateRect?
+    /// The printer the project targets, as `project_settings.config` records
+    /// it ("Bambu Lab X1 Carbon"); nil when the project doesn't say.
+    public var printerModel: String?
 
     public init(
         filaments: [Filament] = [],
         plates: [Plate] = [],
         filamentIndexByObject: [ResourceRef: Int] = [:],
-        plateRect: PlateRect? = nil
+        plateRect: PlateRect? = nil,
+        printerModel: String? = nil
     ) {
         self.filaments = filaments
         self.plates = plates
         self.filamentIndexByObject = filamentIndexByObject
         self.plateRect = plateRect
+        self.printerModel = printerModel
     }
 
     /// The Plate the preview shows by default: the first one that has
@@ -85,6 +98,20 @@ public struct SlicerProjectInfo: Equatable, Sendable {
     /// `plater_id` values are not guaranteed unique in malformed files.
     public var defaultPlateIndex: Int? {
         plates.firstIndex { !$0.objectRefs.isEmpty }
+    }
+
+    /// Index of the Plate whose Plate Thumbnail stands for the whole
+    /// package: the default Plate when it recorded one, else the first
+    /// Plate that did; nil when no Plate has a thumbnail. The Finder icon
+    /// and the sliced-file preview's opening Plate share this one rule
+    /// (issue #8), so the two surfaces never disagree — a Sliced File whose
+    /// config lost its `model_instance` entries has no default Plate, yet
+    /// must still show its Plate Thumbnails.
+    public var thumbnailPlateIndex: Int? {
+        if let index = defaultPlateIndex, plates[index].thumbnailPartPath != nil {
+            return index
+        }
+        return plates.firstIndex { $0.thumbnailPartPath != nil }
     }
 
     /// The filament color the project explicitly assigns to the object (or

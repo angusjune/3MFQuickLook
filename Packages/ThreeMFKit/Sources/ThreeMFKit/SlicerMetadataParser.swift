@@ -40,15 +40,22 @@ enum SlicerMetadataParser {
         return info
     }
 
-    /// The Plate Thumbnail path of the plate the preview shows by default —
-    /// the first Plate that has objects (CONTEXT.md thumbnail policy). Reads
-    /// only `model_settings.config`; never touches geometry. Returns nil when
-    /// the package isn't a Slicer Project or the default plate has no
+    /// The Plate Thumbnail path the Finder icon uses. Reads only
+    /// `model_settings.config`; never touches geometry. Regular projects
+    /// keep the strict rule — the default Plate's thumbnail or nothing, so
+    /// the OPC Package Thumbnail (or a mesh render) can stand in. Sliced
+    /// Files follow ``SlicerProjectInfo/thumbnailPlateIndex`` — the same
+    /// rule as the sliced preview's opening Plate, so icon and panel agree
+    /// even when the config records no objects (issue #8). Returns nil when
+    /// the package isn't a Slicer Project or the chosen Plate has no
     /// thumbnail.
     static func defaultPlateThumbnailPath(package: OPCPackage, rootPartPath: String) -> String? {
         guard let settings = package.partDataIfPresent(at: modelSettingsPath),
               let info = parseModelSettings(settings, rootPartPath: rootPartPath, objects: [])
         else { return nil }
+        if package.containsGCodePart() {
+            return info.thumbnailPlateIndex.flatMap { info.plates[$0].thumbnailPartPath }
+        }
         return info.defaultPlate?.thumbnailPartPath
     }
 
@@ -174,6 +181,10 @@ enum SlicerMetadataParser {
         }
 
         info.plateRect = plateRect(fromPrintableArea: settings["printable_area"] as? [String])
+
+        if let model = settings["printer_model"] as? String, !model.isEmpty {
+            info.printerModel = model
+        }
     }
 
     /// The bounding rectangle of the `printable_area` corner list
