@@ -9,18 +9,29 @@ let viewerLogger = Logger(subsystem: "com.angusjune.ThreeMFViewer", category: "v
 /// The shared interactive 3D view used by the Host App and the Preview
 /// Extension: the document's scene under the custom camera rig
 /// (drag = orbit, scroll/pinch = zoom, secondary drag = pan — ADR-0001
-/// amendment).
+/// amendment). Multi-plate Slicer Projects get the Plate Filmstrip along the
+/// bottom (issue #6); clicking a Plate swaps the scene to that Plate's
+/// objects from the already-parsed document — the file is never re-read.
 public struct Viewer: View {
-    private let scene: Entity
+    private let document: ThreeMFDocument
+    private let filmstripCells: [PlateFilmstrip.Cell]
+
+    @State private var scene: Entity
     @State private var rig: CameraRig
+    @State private var selectedPlateIndex: Int?
 
     @MainActor
     public init(document: ThreeMFDocument) {
+        self.document = document
+        self.filmstripCells = PlateFilmstrip.plates(of: document).map {
+            PlateFilmstrip.Cell(plate: $0, thumbnail: $0.thumbnailData.flatMap(NSImage.init(data:)))
+        }
         let scene = SceneBuilder.makeScene(for: document)
-        self.scene = scene
+        _scene = State(initialValue: scene)
         var rig = CameraRig()
         rig.frame(SceneBuilder.modelBounds(of: scene))
         _rig = State(initialValue: rig)
+        _selectedPlateIndex = State(initialValue: document.slicerProject?.defaultPlateIndex)
     }
 
     public var body: some View {
@@ -32,11 +43,35 @@ public struct Viewer: View {
             content.add(camera)
             viewerLogger.info("viewer scene: bounds \(String(describing: SceneBuilder.modelBounds(of: scene)), privacy: .public), camera at \(String(describing: rig.transform.translation), privacy: .public)")
         } update: { content in
+            // A Plate switch rebuilt the scene entity; swap it in place.
+            if let stale = content.entities.first(where: { $0.name == "Scene" && $0 !== scene }) {
+                content.remove(stale)
+                content.add(scene)
+            }
             if let camera = content.entities.first(where: { $0.name == "RigCamera" }) {
                 camera.transform = rig.transform
             }
         }
         .overlay(CameraGestureSurface(rig: $rig))
+        .overlay(alignment: .bottom) {
+            if !filmstripCells.isEmpty {
+                PlateFilmstrip(
+                    cells: filmstripCells,
+                    selectedIndex: selectedPlateIndex,
+                    select: switchToPlate)
+            }
+        }
+    }
+
+    /// Swaps the 3D scene to the clicked Plate's objects and re-aims the
+    /// camera at the new content. Only the rig's target and distance change,
+    /// so the user's orbit orientation survives the switch.
+    private func switchToPlate(at index: Int) {
+        guard index != selectedPlateIndex, filmstripCells.indices.contains(index) else { return }
+        selectedPlateIndex = index
+        scene = SceneBuilder.makeScene(for: document, plate: filmstripCells[index].plate)
+        rig.frame(SceneBuilder.modelBounds(of: scene))
+        viewerLogger.info("switched to plate \(index + 1, privacy: .public) of \(filmstripCells.count, privacy: .public)")
     }
 }
 

@@ -11,11 +11,16 @@ public enum SceneBuilder {
     /// Neutral filament gray for geometry the file doesn't color.
     static let neutralColor = NSColor(srgbRed: 0.82, green: 0.82, blue: 0.84, alpha: 1)
 
+    /// - Parameter plate: the Build Plate to stage, or nil for the default —
+    ///   a Slicer Project's first Plate with objects, a Vanilla file's whole
+    ///   build. Plate switching (issue #6) rebuilds the scene from the same
+    ///   parsed document; the file is never re-read.
     @MainActor
-    public static func makeScene(for document: ThreeMFDocument) -> Entity {
+    public static func makeScene(for document: ThreeMFDocument, plate: Plate? = nil) -> Entity {
         let root = Entity()
+        root.name = "Scene"
 
-        let model = makeModelSubtree(for: document)
+        let model = makeModelSubtree(for: document, plate: plate)
         root.addChild(model)
         root.addChild(makeLighting())
         // Slicer Projects sit on a plate hint at the true plate size; Vanilla
@@ -31,10 +36,12 @@ public enum SceneBuilder {
 
     /// The bounds cameras should frame: the document's geometry (the "Model"
     /// subtree), not staging like the backdrop, which is deliberately much
-    /// wider than the model.
+    /// wider than the model. A scene with no geometry at all (an empty Plate)
+    /// frames its staging instead, so the camera shows the empty bed.
     @MainActor
     public static func modelBounds(of scene: Entity) -> BoundingBox {
-        (scene.findEntity(named: "Model") ?? scene).visualBounds(relativeTo: nil)
+        let model = (scene.findEntity(named: "Model") ?? scene).visualBounds(relativeTo: nil)
+        return model.extents.max() > 0 ? model : scene.visualBounds(relativeTo: nil)
     }
 
     // MARK: Model subtree
@@ -42,7 +49,7 @@ public enum SceneBuilder {
     /// The document's build, in 3MF model space, wrapped in one entity that
     /// converts to RealityKit conventions: model units → meters, Z-up → Y-up.
     @MainActor
-    private static func makeModelSubtree(for document: ThreeMFDocument) -> Entity {
+    private static func makeModelSubtree(for document: ThreeMFDocument, plate: Plate?) -> Entity {
         let model = Entity()
         model.name = "Model"
         model.transform = Transform(
@@ -62,7 +69,7 @@ public enum SceneBuilder {
                 return BuildItem(objectRef: object.ref)
             }
             : document.buildItems
-        let items = defaultPlateItems(of: allItems, slicer: document.slicerProject)
+        let items = plateItems(of: allItems, plate: plate ?? document.slicerProject?.defaultPlate)
 
         for item in items {
             guard let object = objectsByRef[item.objectRef] else { continue }
@@ -81,12 +88,14 @@ public enum SceneBuilder {
         return model
     }
 
-    /// The build items the preview stages: for a Slicer Project, the default
-    /// Plate's; everything otherwise — including when the plate assignments
-    /// match no build item (lenient: a broken config must not empty the
-    /// preview).
-    private static func defaultPlateItems(of items: [BuildItem], slicer: SlicerProjectInfo?) -> [BuildItem] {
-        guard let plate = slicer?.defaultPlate else { return items }
+    /// The build items staged for a Plate: the plate's assigned items, with
+    /// two edges. Assignments that match no build item fall back to the whole
+    /// build (lenient: a broken config must not empty the preview); a Plate
+    /// with no assignments at all is genuinely empty and stages nothing.
+    /// No plate — a Vanilla file — stages everything.
+    private static func plateItems(of items: [BuildItem], plate: Plate?) -> [BuildItem] {
+        guard let plate else { return items }
+        guard !plate.objectRefs.isEmpty else { return [] }
         let assigned = Set(plate.objectRefs)
         let plateItems = items.filter { assigned.contains($0.objectRef) }
         return plateItems.isEmpty ? items : plateItems

@@ -6,6 +6,9 @@
   plate 3 a two-part object: pyramid on the object-level extruder 2 plus a
   small cube with a part-level extruder 1 override), two filaments
   (#FF0000 PLA, #00FF00 PETG), and a 180x180 printable_area.
+  Plate 2 carries a real Plate Thumbnail (Metadata/plate_2.png, a 4x4
+  solid-red PNG); plates 1 and 3 deliberately have none, exercising the
+  Filmstrip's numbered-placeholder fallback.
   Production-extension: each root object is a component reference into its
   own 3D/Objects/*.model part, mirroring how Bambu Studio packages geometry
   (part ids in model_settings.config equal the component target object ids,
@@ -19,7 +22,9 @@ regenerate with: python3 Corpus/tools/make_slicer_fixtures.py
 """
 
 import os
+import struct
 import zipfile
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, "..", "slicer-projects")
@@ -37,6 +42,20 @@ ROOT_RELS = """<?xml version="1.0" encoding="UTF-8"?>
  <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
 </Relationships>
 """
+
+
+def solid_png(width, height, rgb):
+    """A minimal valid PNG (8-bit RGB, one solid color), dependency-free."""
+    def chunk(kind, payload):
+        body = kind + payload
+        return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body))
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    raw = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", header)
+            + chunk(b"IDAT", zlib.compress(raw, 9))
+            + chunk(b"IEND", b""))
 
 
 def cube_mesh_xml(size):
@@ -235,6 +254,7 @@ def main():
             (1, pyramid_mesh_xml(30, 15)), (2, cube_mesh_xml(10)))),
         ("Metadata/model_settings.config", MULTIPLATE_MODEL_SETTINGS),
         ("Metadata/project_settings.config", MULTIPLATE_PROJECT_SETTINGS),
+        ("Metadata/plate_2.png", solid_png(4, 4, (255, 0, 0))),
     ])
 
     vertices, triangles = cube_mesh_xml(10)
