@@ -346,6 +346,53 @@ import ThreeMFViewer
         #expect(simd_distance(tint, SIMD3(1, 0, 0)) < 0.02)
     }
 
+    @Test func explicitPlateStagesOnlyThatPlatesObjects() throws {
+        // Plate switching (issue #6): asking for plate 3 stages object 2
+        // (green) alone, regardless of the default plate.
+        let refs = [ResourceRef(partPath: Self.rootPart, id: 1), ResourceRef(partPath: Self.rootPart, id: 2)]
+        let doc = Self.slicerDocument(plates: [
+            Plate(id: 1),
+            Plate(id: 2, objectRefs: [refs[0]]),
+            Plate(id: 3, objectRefs: [refs[1]]),
+        ])
+
+        let plates = try #require(doc.slicerProject?.plates)
+        let scene = SceneBuilder.makeScene(for: doc, plate: plates[2])
+        let models = modelEntities(in: try modelSubtree(of: scene))
+        #expect(models.count == 1)
+        let tint = try tint(of: try #require(models.first?.model?.materials.first))
+        #expect(simd_distance(tint, SIMD3(0, 1, 0)) < 0.02)
+    }
+
+    @Test func explicitlyEmptyPlateStagesNothing() throws {
+        // Clicking a Plate with no assignments must show the empty bed, not
+        // fall back to the whole build.
+        let doc = Self.slicerDocument(plates: [
+            Plate(id: 1),
+            Plate(id: 2, objectRefs: [ResourceRef(partPath: Self.rootPart, id: 1)]),
+        ])
+
+        let plates = try #require(doc.slicerProject?.plates)
+        let scene = SceneBuilder.makeScene(for: doc, plate: plates[0])
+        #expect(modelEntities(in: try modelSubtree(of: scene)).isEmpty)
+        // The camera still has something to frame: the plate hint's bed.
+        let bounds = SceneBuilder.modelBounds(of: scene)
+        #expect(abs(bounds.extents.x - 0.18) < 1e-3)
+        #expect(abs(bounds.extents.z - 0.18) < 1e-3)
+    }
+
+    @Test func explicitPlateWithUnmatchedAssignmentsFallsBackToTheWholeBuild() throws {
+        // The lenient whole-build fallback holds for explicitly selected
+        // plates too: a broken config must not empty the preview.
+        let doc = Self.slicerDocument(plates: [
+            Plate(id: 1, objectRefs: [ResourceRef(partPath: Self.rootPart, id: 99)]),
+        ])
+
+        let plates = try #require(doc.slicerProject?.plates)
+        let scene = SceneBuilder.makeScene(for: doc, plate: plates[0])
+        #expect(modelEntities(in: try modelSubtree(of: scene)).count == 2)
+    }
+
     @Test func plateAssignmentsThatMatchNoBuildItemFallBackToTheWholeBuild() throws {
         // Defensive: a config referencing unknown objects must not empty the
         // preview.
@@ -437,6 +484,34 @@ import ThreeMFViewer
         #expect(parts.count == 1)
         let tint = try tint(of: try #require(parts.first?.model?.materials.first))
         #expect(simd_distance(tint, SIMD3(1, 0, 0)) < 0.02)
+    }
+
+    @Test(.enabled(if: corpusHas("slicer-projects/synthetic_multiplate.3mf")))
+    func corpusMultiPlateProjectBuildsEachPlatesOwnScene() throws {
+        let url = Self.corpusRoot.appendingPathComponent("slicer-projects/synthetic_multiplate.3mf")
+        let document = try ThreeMFParser().parse(fileAt: url)
+        let plates = try #require(document.slicerProject?.plates)
+        #expect(plates.count == 3)
+
+        // Plate 2: exactly the cube, on extruder 1 → #FF0000.
+        let plate2 = SceneBuilder.makeScene(for: document, plate: plates[1])
+        let plate2Parts = modelEntities(in: try modelSubtree(of: plate2)).filter { $0.model != nil }
+        #expect(plate2Parts.count == 1)
+        let plate2Tint = try tint(of: try #require(plate2Parts.first?.model?.materials.first))
+        #expect(simd_distance(plate2Tint, SIMD3(1, 0, 0)) < 0.02)
+
+        // Plate 3: the pyramid (object extruder 2 → #00FF00) plus the topper
+        // (part-level extruder 1 override → #FF0000).
+        let plate3 = SceneBuilder.makeScene(for: document, plate: plates[2])
+        let plate3Parts = modelEntities(in: try modelSubtree(of: plate3)).filter { $0.model != nil }
+        #expect(plate3Parts.count == 2)
+        let plate3Tints = try plate3Parts.map { try tint(of: try #require($0.model?.materials.first)) }
+        #expect(plate3Tints.contains { simd_distance($0, SIMD3(0, 1, 0)) < 0.02 })
+        #expect(plate3Tints.contains { simd_distance($0, SIMD3(1, 0, 0)) < 0.02 })
+
+        // Plate 1 is genuinely empty: nothing staged.
+        let plate1 = SceneBuilder.makeScene(for: document, plate: plates[0])
+        #expect(modelEntities(in: try modelSubtree(of: plate1)).filter { $0.model != nil }.isEmpty)
     }
 
     // MARK: Staging

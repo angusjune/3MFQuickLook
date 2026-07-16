@@ -31,6 +31,9 @@ import ThreeMFKit
             ResourceRef(partPath: Self.rootPart, id: $0)
         })
         #expect(plate.thumbnailPartPath == "/Metadata/plate_1.png")
+        // The package contains that part (8521 bytes, `unzip -l`); a full
+        // parse extracts it so the Filmstrip never re-opens the file.
+        #expect(plate.thumbnailData?.count == 8521)
         #expect(slicer.defaultPlate == plate)
 
         // Every object carries <metadata key="extruder" value="1"/> → index 0.
@@ -67,6 +70,7 @@ import ThreeMFKit
 
         // Plate 1 is empty, so plate 2 is the default.
         #expect(slicer.defaultPlate?.id == 2)
+        #expect(slicer.defaultPlateIndex == 1)
 
         // Cube → extruder 1 → filament 0, pyramid → extruder 2 → filament 1.
         #expect(slicer.filamentIndexByObject[ResourceRef(partPath: Self.rootPart, id: 2)] == 0)
@@ -95,9 +99,26 @@ import ThreeMFKit
         #expect(topper.triangleCount == 12)
     }
 
+    @Test(.enabled(if: Corpus.has("slicer-projects/synthetic_multiplate.3mf")))
+    func plateThumbnailBytesAreExtractedAtParseTime() throws {
+        let doc = try ThreeMFParser().parse(
+            fileAt: Corpus.url("slicer-projects/synthetic_multiplate.3mf"))
+        let slicer = try #require(doc.slicerProject)
+
+        // Plate 2 declares Metadata/plate_2.png and the package contains it
+        // (a 4x4 solid-red PNG, by fixture construction).
+        let data = try #require(slicer.plates[1].thumbnailData)
+        #expect(data.prefix(8) == Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+
+        // Plates 1 and 3 record no thumbnail_file → no bytes either.
+        #expect(slicer.plates[0].thumbnailData == nil)
+        #expect(slicer.plates[2].thumbnailData == nil)
+    }
+
     @Test func defaultPlateIsNilWhenNoPlateHasObjects() {
         let info = SlicerProjectInfo(plates: [Plate(id: 1), Plate(id: 2)])
         #expect(info.defaultPlate == nil)
+        #expect(info.defaultPlateIndex == nil)
     }
 
     @Test(.enabled(if: Corpus.has("slicer-projects/synthetic_prusa.3mf")))

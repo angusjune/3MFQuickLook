@@ -77,7 +77,14 @@ public struct SlicerProjectInfo: Equatable, Sendable {
     /// The Plate the preview shows by default: the first one that has
     /// objects, nil when none does.
     public var defaultPlate: Plate? {
-        plates.first { !$0.objectRefs.isEmpty }
+        defaultPlateIndex.map { plates[$0] }
+    }
+
+    /// Index of ``defaultPlate`` within ``plates``; nil when no Plate has
+    /// objects. The Plate Filmstrip selects by position, not `id` — slicer
+    /// `plater_id` values are not guaranteed unique in malformed files.
+    public var defaultPlateIndex: Int? {
+        plates.firstIndex { !$0.objectRefs.isEmpty }
     }
 
     /// The filament color the project explicitly assigns to the object (or
@@ -113,17 +120,23 @@ public struct Plate: Equatable, Sendable {
     public var objectRefs: [ResourceRef]
     /// Zip-absolute path of the Plate Thumbnail PNG, when present.
     public var thumbnailPartPath: String?
+    /// The Plate Thumbnail image bytes, extracted during the full parse so
+    /// the Plate Filmstrip renders without re-opening the package; nil when
+    /// the plate declares no thumbnail or the part is missing.
+    public var thumbnailData: Data?
 
     public init(
         id: Int,
         name: String? = nil,
         objectRefs: [ResourceRef] = [],
-        thumbnailPartPath: String? = nil
+        thumbnailPartPath: String? = nil,
+        thumbnailData: Data? = nil
     ) {
         self.id = id
         self.name = name
         self.objectRefs = objectRefs
         self.thumbnailPartPath = thumbnailPartPath
+        self.thumbnailData = thumbnailData
     }
 }
 
