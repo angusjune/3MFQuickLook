@@ -9,6 +9,10 @@
   Plate 2 carries a real Plate Thumbnail (Metadata/plate_2.png, a 4x4
   solid-red PNG); plates 1 and 3 deliberately have none, exercising the
   Filmstrip's numbered-placeholder fallback.
+  Plate 2 is also the only SLICED plate: Metadata/slice_info.config records
+  its prediction (5460 s) and used filament (id 1). Plates 1 and 3 have no
+  slice_info entry, exercising the unsliced fallbacks (no print time;
+  filament dots derived from object assignments).
   Production-extension: each root object is a component reference into its
   own 3D/Objects/*.model part, mirroring how Bambu Studio packages geometry
   (part ids in model_settings.config equal the component target object ids,
@@ -191,6 +195,29 @@ MULTIPLATE_PROJECT_SETTINGS = """{
 }
 """
 
+# Only plate 2 has been sliced; the shape mirrors Bambu Studio's output
+# (plate <metadata key="index"> matches the plate's plater_id, prediction in
+# seconds, one <filament> per filament the sliced G-code uses, 1-based ids).
+MULTIPLATE_SLICE_INFO = """<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <header>
+    <header_item key="X-BBL-Client-Type" value="slicer"/>
+    <header_item key="X-BBL-Client-Version" value="02.03.01.51"/>
+  </header>
+  <plate>
+    <metadata key="index" value="2"/>
+    <metadata key="printer_model_id" value="C11"/>
+    <metadata key="nozzle_diameters" value="0.4"/>
+    <metadata key="prediction" value="5460"/>
+    <metadata key="weight" value="4.88"/>
+    <metadata key="outside" value="false"/>
+    <metadata key="support_used" value="false"/>
+    <object identify_id="86" name="Cube" skipped="false"/>
+    <filament id="1" tray_info_idx="GFA00" type="PLA" color="#FF0000" used_m="1.63" used_g="4.88"/>
+  </plate>
+</config>
+"""
+
 PRUSA_ROOT_MODEL = """<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:slic3rpe="http://schemas.slic3r.org/3mf/2017/06">
  <metadata name="slic3rpe:Version3mf">1</metadata>
@@ -254,6 +281,7 @@ def main():
             (1, pyramid_mesh_xml(30, 15)), (2, cube_mesh_xml(10)))),
         ("Metadata/model_settings.config", MULTIPLATE_MODEL_SETTINGS),
         ("Metadata/project_settings.config", MULTIPLATE_PROJECT_SETTINGS),
+        ("Metadata/slice_info.config", MULTIPLATE_SLICE_INFO),
         ("Metadata/plate_2.png", solid_png(4, 4, (255, 0, 0))),
     ])
 

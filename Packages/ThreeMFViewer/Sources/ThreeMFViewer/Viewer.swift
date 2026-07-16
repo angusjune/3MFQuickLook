@@ -12,6 +12,8 @@ let viewerLogger = Logger(subsystem: "com.angusjune.ThreeMFViewer", category: "v
 /// amendment). Multi-plate Slicer Projects get the Plate Filmstrip along the
 /// bottom (issue #6); clicking a Plate swaps the scene to that Plate's
 /// objects from the already-parsed document — the file is never re-read.
+/// Beneath it sits the Info Line (issue #7), describing whichever scene is
+/// staged.
 public struct Viewer: View {
     private let document: ThreeMFDocument
     private let filmstripCells: [PlateFilmstrip.Cell]
@@ -19,6 +21,7 @@ public struct Viewer: View {
     @State private var scene: Entity
     @State private var rig: CameraRig
     @State private var selectedPlateIndex: Int?
+    @State private var infoContent: InfoLineContent
 
     @MainActor
     public init(document: ThreeMFDocument) {
@@ -32,6 +35,8 @@ public struct Viewer: View {
         rig.frame(SceneBuilder.modelBounds(of: scene))
         _rig = State(initialValue: rig)
         _selectedPlateIndex = State(initialValue: document.slicerProject?.defaultPlateIndex)
+        // Nil plate = the default scene, the same one makeScene just staged.
+        _infoContent = State(initialValue: InfoLineContent(for: document, plate: nil))
     }
 
     public var body: some View {
@@ -54,23 +59,30 @@ public struct Viewer: View {
         }
         .overlay(CameraGestureSurface(rig: $rig))
         .overlay(alignment: .bottom) {
-            if !filmstripCells.isEmpty {
-                PlateFilmstrip(
-                    cells: filmstripCells,
-                    selectedIndex: selectedPlateIndex,
-                    select: switchToPlate)
+            VStack(spacing: 8) {
+                if !filmstripCells.isEmpty {
+                    PlateFilmstrip(
+                        cells: filmstripCells,
+                        selectedIndex: selectedPlateIndex,
+                        select: switchToPlate)
+                }
+                InfoLine(content: infoContent)
             }
+            .padding(12)
         }
     }
 
     /// Swaps the 3D scene to the clicked Plate's objects and re-aims the
     /// camera at the new content. Only the rig's target and distance change,
-    /// so the user's orbit orientation survives the switch.
+    /// so the user's orbit orientation survives the switch. The Info Line
+    /// follows: it always describes the staged Plate.
     private func switchToPlate(at index: Int) {
         guard index != selectedPlateIndex, filmstripCells.indices.contains(index) else { return }
         selectedPlateIndex = index
-        scene = SceneBuilder.makeScene(for: document, plate: filmstripCells[index].plate)
+        let plate = filmstripCells[index].plate
+        scene = SceneBuilder.makeScene(for: document, plate: plate)
         rig.frame(SceneBuilder.modelBounds(of: scene))
+        infoContent = InfoLineContent(for: document, plate: plate)
         viewerLogger.info("switched to plate \(index + 1, privacy: .public) of \(filmstripCells.count, privacy: .public)")
     }
 }

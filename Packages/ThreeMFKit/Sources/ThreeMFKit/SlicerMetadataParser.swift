@@ -4,14 +4,17 @@ import libxml2
 /// Reads the Bambu Studio / OrcaSlicer slicer-dialect config parts into
 /// ``SlicerProjectInfo``: Plates and object assignments from
 /// `Metadata/model_settings.config` (XML), filament colors and the printable
-/// area from `Metadata/project_settings.config` (JSON). The dialect is
-/// undocumented; the corpus files are the spec.
+/// area from `Metadata/project_settings.config` (JSON), per-plate print
+/// predictions and used filaments from `Metadata/slice_info.config` (XML,
+/// written only after slicing). The dialect is undocumented; the corpus
+/// files are the spec.
 ///
 /// Lenient by design: a package without the dialect — including PrusaSlicer
 /// projects — or with malformed configs yields nil and previews as Vanilla.
 enum SlicerMetadataParser {
     static let modelSettingsPath = "/Metadata/model_settings.config"
     static let projectSettingsPath = "/Metadata/project_settings.config"
+    static let sliceInfoPath = "/Metadata/slice_info.config"
 
     static func parse(
         package: OPCPackage, rootPartPath: String, objects: [ObjectResource]
@@ -23,6 +26,9 @@ enum SlicerMetadataParser {
 
         if let project = package.partDataIfPresent(at: projectSettingsPath) {
             applyProjectSettings(project, to: &info)
+        }
+        if let sliceInfo = package.partDataIfPresent(at: sliceInfoPath) {
+            applySliceInfo(sliceInfo, to: &info)
         }
         // Pull the Plate Thumbnail bytes now, while the package is open:
         // consumers switch Plates on the already-parsed document and must
@@ -119,6 +125,37 @@ enum SlicerMetadataParser {
             return LibXML.attribute(of: metadata, named: "value")
         }
         return nil
+    }
+
+    // MARK: slice_info.config (per-plate print prediction, used filaments)
+
+    /// Applies each sliced plate's `<plate>` block: `index` names the plate
+    /// (matching its `plater_id`), `prediction` is the estimated print time
+    /// in seconds, and one `<filament id="…">` per filament the sliced
+    /// G-code uses (1-based extruder ids). Unsliced projects carry only a
+    /// `<header>` — every plate keeps nil and the Info Line derives instead.
+    private static func applySliceInfo(_ data: Data, to info: inout SlicerProjectInfo) {
+        let plates = info.plates
+        LibXML.withDocument(data) { doc -> Void in
+            guard let config = xmlDocGetRootElement(doc),
+                  xmlStrEqual(config.pointee.name, "config") != 0
+            else { return }
+            for plateNode in LibXML.children(of: config, named: "plate") {
+                guard let id = metadataValue(of: plateNode, key: "index").flatMap(Int.init),
+                      let index = plates.firstIndex(where: { $0.id == id })
+                else { continue }
+                if let prediction = metadataValue(of: plateNode, key: "prediction")
+                    .flatMap(Double.init), prediction > 0 {
+                    info.plates[index].estimatedPrintTime = prediction
+                }
+                let filamentIndices = LibXML.children(of: plateNode, named: "filament").compactMap {
+                    LibXML.attribute(of: $0, named: "id").flatMap(Int.init).map { $0 - 1 }
+                }
+                if !filamentIndices.isEmpty {
+                    info.plates[index].usedFilamentIndices = filamentIndices
+                }
+            }
+        }
     }
 
     // MARK: project_settings.config (filaments, printable area)

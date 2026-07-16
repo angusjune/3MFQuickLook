@@ -61,17 +61,10 @@ public enum SceneBuilder {
             document.objects.map { ($0.ref, $0) },
             uniquingKeysWith: { first, _ in first })
 
-        // Lenient fallback: a file without build items still shows its mesh
-        // objects.
-        let allItems = document.buildItems.isEmpty
-            ? document.objects.compactMap { object -> BuildItem? in
-                guard case .mesh = object.content else { return nil }
-                return BuildItem(objectRef: object.ref)
-            }
-            : document.buildItems
-        let items = plateItems(of: allItems, plate: plate ?? document.slicerProject?.defaultPlate)
-
-        for item in items {
+        // Staging — which items, with which lenient fallbacks — is the
+        // document's call (ThreeMFDocument.stagedBuildItems), shared with the
+        // Info Line's metrics so the two can never disagree.
+        for item in document.stagedBuildItems(for: plate) {
             guard let object = objectsByRef[item.objectRef] else { continue }
             // Objects without an explicit assignment print on filament 0.
             let itemColor = document.slicerProject?.filamentColor(of: item.objectRef)
@@ -86,19 +79,6 @@ public enum SceneBuilder {
             model.addChild(entity)
         }
         return model
-    }
-
-    /// The build items staged for a Plate: the plate's assigned items, with
-    /// two edges. Assignments that match no build item fall back to the whole
-    /// build (lenient: a broken config must not empty the preview); a Plate
-    /// with no assignments at all is genuinely empty and stages nothing.
-    /// No plate — a Vanilla file — stages everything.
-    private static func plateItems(of items: [BuildItem], plate: Plate?) -> [BuildItem] {
-        guard let plate else { return items }
-        guard !plate.objectRefs.isEmpty else { return [] }
-        let assigned = Set(plate.objectRefs)
-        let plateItems = items.filter { assigned.contains($0.objectRef) }
-        return plateItems.isEmpty ? items : plateItems
     }
 
     @MainActor
