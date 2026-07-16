@@ -20,6 +20,14 @@
 - slicer-projects/synthetic_prusa.3mf — a PrusaSlicer-style project: plain
   core-spec root model plus Metadata/Slic3r_PE*.config parts and NO Bambu
   configs. Must parse as Vanilla-plus (document.slicer == nil).
+- sliced/synthetic_single.gcode.3mf — a Bambu-style Sliced File (issue #8):
+  geometry-stripped root model, ONE sliced plate with its G-code part
+  (Metadata/plate_1.gcode), plate image (6x6 solid blue), prediction 3720 s,
+  one filament (#00AE42 PLA), printer_model "Bambu Lab P1S".
+- sliced/synthetic_multiplate.gcode.3mf — a Sliced File with TWO sliced
+  plates (predictions 3600 s / 7245 s, red and green 4x4 plate images, each
+  using one of the two filaments #FF0000 PLA / #0000FF PETG),
+  printer_model "Bambu Lab X1 Carbon".
 
 The values written here are the ground truth the parse-seam tests assert;
 regenerate with: python3 Corpus/tools/make_slicer_fixtures.py
@@ -32,6 +40,7 @@ import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, "..", "slicer-projects")
+SLICED_OUT_DIR = os.path.join(HERE, "..", "sliced")
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -258,6 +267,166 @@ PRUSA_MODEL_CONFIG = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+# --- Sliced Files (.gcode.3mf, issue #8) ---------------------------------
+# Mirrors Bambu Studio's sliced export: the root model keeps its metadata but
+# its resources and build are EMPTY (geometry stripped), while Metadata/
+# gains one plate_N.gcode per sliced plate. model_settings.config keeps the
+# plate blocks (with gcode_file alongside thumbnail_file) and the
+# model_instance/identify_id entries the printer's skip-object feature needs.
+
+SLICED_CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+ <Default Extension="png" ContentType="image/png"/>
+ <Default Extension="gcode" ContentType="text/x.gcode"/>
+</Types>
+"""
+
+SLICED_ROOT_MODEL = """<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+ <metadata name="Application">BambuStudio-02.03.01.51</metadata>
+ <metadata name="Title">synthetic sliced fixture</metadata>
+ <resources/>
+ <build/>
+</model>
+"""
+
+
+def fake_gcode(minutes):
+    return (
+        "; BambuStudio 02.03.01.51\n"
+        f"; model printing time: {minutes}m\n"
+        "; total layer number: 2\n"
+        "G28\nG1 X10 Y10 Z0.2 F3000\nG1 X20 E1.5\nM400\n"
+    )
+
+
+SLICED_SINGLE_MODEL_SETTINGS = """<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="2">
+    <metadata key="name" value="Benchy"/>
+    <metadata key="extruder" value="1"/>
+  </object>
+  <plate>
+    <metadata key="plater_id" value="1"/>
+    <metadata key="plater_name" value=""/>
+    <metadata key="gcode_file" value="Metadata/plate_1.gcode"/>
+    <metadata key="thumbnail_file" value="Metadata/plate_1.png"/>
+    <model_instance>
+      <metadata key="object_id" value="2"/>
+      <metadata key="instance_id" value="0"/>
+      <metadata key="identify_id" value="463"/>
+    </model_instance>
+  </plate>
+</config>
+"""
+
+SLICED_SINGLE_PROJECT_SETTINGS = """{
+  "filament_colour": ["#00AE42"],
+  "filament_type": ["PLA"],
+  "printer_model": "Bambu Lab P1S",
+  "printable_area": ["0x0", "256x0", "256x256", "0x256"],
+  "printable_height": "256"
+}
+"""
+
+SLICED_SINGLE_SLICE_INFO = """<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <header>
+    <header_item key="X-BBL-Client-Type" value="slicer"/>
+    <header_item key="X-BBL-Client-Version" value="02.03.01.51"/>
+  </header>
+  <plate>
+    <metadata key="index" value="1"/>
+    <metadata key="printer_model_id" value="C12"/>
+    <metadata key="nozzle_diameters" value="0.4"/>
+    <metadata key="prediction" value="3720"/>
+    <metadata key="weight" value="15.37"/>
+    <metadata key="outside" value="false"/>
+    <metadata key="support_used" value="false"/>
+    <object identify_id="463" name="Benchy" skipped="false"/>
+    <filament id="1" tray_info_idx="GFA00" type="PLA" color="#00AE42" used_m="5.12" used_g="15.37"/>
+  </plate>
+</config>
+"""
+
+SLICED_MULTI_MODEL_SETTINGS = """<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="2">
+    <metadata key="name" value="Cube"/>
+    <metadata key="extruder" value="1"/>
+  </object>
+  <object id="4">
+    <metadata key="name" value="Pyramid"/>
+    <metadata key="extruder" value="2"/>
+  </object>
+  <plate>
+    <metadata key="plater_id" value="1"/>
+    <metadata key="plater_name" value="Cube Plate"/>
+    <metadata key="gcode_file" value="Metadata/plate_1.gcode"/>
+    <metadata key="thumbnail_file" value="Metadata/plate_1.png"/>
+    <model_instance>
+      <metadata key="object_id" value="2"/>
+      <metadata key="instance_id" value="0"/>
+      <metadata key="identify_id" value="86"/>
+    </model_instance>
+  </plate>
+  <plate>
+    <metadata key="plater_id" value="2"/>
+    <metadata key="plater_name" value=""/>
+    <metadata key="gcode_file" value="Metadata/plate_2.gcode"/>
+    <metadata key="thumbnail_file" value="Metadata/plate_2.png"/>
+    <model_instance>
+      <metadata key="object_id" value="4"/>
+      <metadata key="instance_id" value="0"/>
+      <metadata key="identify_id" value="87"/>
+    </model_instance>
+  </plate>
+</config>
+"""
+
+SLICED_MULTI_PROJECT_SETTINGS = """{
+  "filament_colour": ["#FF0000", "#0000FF"],
+  "filament_type": ["PLA", "PETG"],
+  "printer_model": "Bambu Lab X1 Carbon",
+  "printable_area": ["0x0", "256x0", "256x256", "0x256"],
+  "printable_height": "256"
+}
+"""
+
+SLICED_MULTI_SLICE_INFO = """<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <header>
+    <header_item key="X-BBL-Client-Type" value="slicer"/>
+    <header_item key="X-BBL-Client-Version" value="02.03.01.51"/>
+  </header>
+  <plate>
+    <metadata key="index" value="1"/>
+    <metadata key="printer_model_id" value="BL-P001"/>
+    <metadata key="nozzle_diameters" value="0.4"/>
+    <metadata key="prediction" value="3600"/>
+    <metadata key="weight" value="4.88"/>
+    <metadata key="outside" value="false"/>
+    <metadata key="support_used" value="false"/>
+    <object identify_id="86" name="Cube" skipped="false"/>
+    <filament id="1" tray_info_idx="GFA00" type="PLA" color="#FF0000" used_m="1.63" used_g="4.88"/>
+  </plate>
+  <plate>
+    <metadata key="index" value="2"/>
+    <metadata key="printer_model_id" value="BL-P001"/>
+    <metadata key="nozzle_diameters" value="0.4"/>
+    <metadata key="prediction" value="7245"/>
+    <metadata key="weight" value="9.20"/>
+    <metadata key="outside" value="false"/>
+    <metadata key="support_used" value="false"/>
+    <object identify_id="87" name="Pyramid" skipped="false"/>
+    <filament id="2" tray_info_idx="GFG00" type="PETG" color="#0000FF" used_m="3.07" used_g="9.20"/>
+  </plate>
+</config>
+"""
+
+
 def write_fixture(path, parts):
     """Writes a deterministic zip: fixed timestamps, insertion order."""
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -292,6 +461,32 @@ def main():
         ("3D/3dmodel.model", PRUSA_ROOT_MODEL.format(vertices=vertices, triangles=triangles)),
         ("Metadata/Slic3r_PE.config", PRUSA_CONFIG),
         ("Metadata/Slic3r_PE_model.config", PRUSA_MODEL_CONFIG),
+    ])
+
+    os.makedirs(SLICED_OUT_DIR, exist_ok=True)
+
+    write_fixture(os.path.join(SLICED_OUT_DIR, "synthetic_single.gcode.3mf"), [
+        ("[Content_Types].xml", SLICED_CONTENT_TYPES),
+        ("_rels/.rels", ROOT_RELS),
+        ("3D/3dmodel.model", SLICED_ROOT_MODEL),
+        ("Metadata/model_settings.config", SLICED_SINGLE_MODEL_SETTINGS),
+        ("Metadata/project_settings.config", SLICED_SINGLE_PROJECT_SETTINGS),
+        ("Metadata/slice_info.config", SLICED_SINGLE_SLICE_INFO),
+        ("Metadata/plate_1.gcode", fake_gcode(62)),
+        ("Metadata/plate_1.png", solid_png(6, 6, (0, 0, 255))),
+    ])
+
+    write_fixture(os.path.join(SLICED_OUT_DIR, "synthetic_multiplate.gcode.3mf"), [
+        ("[Content_Types].xml", SLICED_CONTENT_TYPES),
+        ("_rels/.rels", ROOT_RELS),
+        ("3D/3dmodel.model", SLICED_ROOT_MODEL),
+        ("Metadata/model_settings.config", SLICED_MULTI_MODEL_SETTINGS),
+        ("Metadata/project_settings.config", SLICED_MULTI_PROJECT_SETTINGS),
+        ("Metadata/slice_info.config", SLICED_MULTI_SLICE_INFO),
+        ("Metadata/plate_1.gcode", fake_gcode(60)),
+        ("Metadata/plate_1.png", solid_png(4, 4, (255, 0, 0))),
+        ("Metadata/plate_2.gcode", fake_gcode(121)),
+        ("Metadata/plate_2.png", solid_png(4, 4, (0, 255, 0))),
     ])
 
 

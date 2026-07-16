@@ -42,4 +42,21 @@ import ThreeMFKit
     @Test func failureShowsTheFailureStateWithoutAStaticImage() {
         #expect(PreviewView.layer(for: .failed, hasStaticImage: false) == .failure)
     }
+
+    // Sliced Files (issue #8) route to their own layer — never the 3D
+    // viewer, whatever the static image situation.
+
+    @Test func loadedSlicedFileShowsTheSlicedLayerWithAStaticImage() {
+        let document = ThreeMFDocument(isSlicedFile: true)
+        #expect(
+            PreviewView.layer(for: .loaded(document), hasStaticImage: true)
+                == .slicedFile(document))
+    }
+
+    @Test func loadedSlicedFileShowsTheSlicedLayerWithoutAStaticImage() {
+        let document = ThreeMFDocument(isSlicedFile: true)
+        #expect(
+            PreviewView.layer(for: .loaded(document), hasStaticImage: false)
+                == .slicedFile(document))
+    }
 }

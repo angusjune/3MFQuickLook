@@ -68,6 +68,14 @@ final class OPCPackage {
         return try? partData(at: partPath)
     }
 
+    /// Whether the package carries sliced G-code — the content marker of a
+    /// Sliced File (CONTEXT.md). Slicers write one `Metadata/plate_N.gcode`
+    /// per sliced plate; nothing else puts `.gcode` parts in a 3MF package.
+    /// Deliberately independent of the package's filename.
+    func containsGCodePart() -> Bool {
+        archive.contains { $0.path.lowercased().hasSuffix(".gcode") }
+    }
+
     /// The package's root model part, from the `_rels/.rels` relationship of
     /// type `…/3dmanufacturing/2013/01/3dmodel`.
     func rootModelPartPath() throws -> String {

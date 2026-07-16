@@ -6,7 +6,9 @@ import ThreeMFKit
 /// immediately, parses geometry off the main thread, then crossfades to the
 /// interactive ``Viewer`` when the scene is ready. Files with no embedded
 /// image show a neutral loading state instead, then crossfade the same way.
-/// There is no blank panel at any point.
+/// There is no blank panel at any point. Sliced Files crossfade to
+/// ``SlicedFileView`` instead — plate images and print metadata, never a 3D
+/// scene (issue #8).
 ///
 /// Shared by the Preview Extension and the Host App: both hand it a
 /// pre-extracted static image and a parse closure.
@@ -68,6 +70,9 @@ public struct PreviewView: View {
             case .viewer(let document):
                 Viewer(document: document)
                     .transition(.opacity)
+            case .slicedFile(let document):
+                SlicedFileView(document: document)
+                    .transition(.opacity)
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
@@ -80,6 +85,7 @@ public struct PreviewView: View {
     /// static fallback (the open-in-app hint for over-budget files is #10).
     static func layer(for phase: Phase, hasStaticImage: Bool) -> Layer {
         switch phase {
+        case .loaded(let document) where document.isSlicedFile: .slicedFile(document)
         case .loaded(let document): .viewer(document)
         case .loading where hasStaticImage: .staticImage(sceneIsLoading: true)
         case .loading: .loading
@@ -95,6 +101,9 @@ public struct PreviewView: View {
         case loading
         case failure
         case viewer(ThreeMFDocument)
+        /// Sliced Files never reach the 3D viewer — their honest preview is
+        /// the plate images plus print metadata.
+        case slicedFile(ThreeMFDocument)
     }
 
     private var loadingState: some View {

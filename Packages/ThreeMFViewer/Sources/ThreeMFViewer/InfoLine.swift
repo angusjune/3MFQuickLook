@@ -7,10 +7,14 @@ import ThreeMFKit
 /// `View` is `@MainActor`, and this is pure model logic (formatting is
 /// unit-tested off the main actor).
 struct InfoLineContent: Equatable {
+    /// "Bambu Lab P1S" — Sliced Files only, where the printer stands in for
+    /// the geometry facts a stripped package can't provide; nil in the Viewer.
+    var printerModel: String?
     /// "220 × 150 × 42 mm"; nil when the scene has no geometry.
     var dimensions: String?
-    /// "3 objects" — always present, straight from the staged build.
-    var objectCount: String
+    /// "3 objects" — straight from the staged build; nil for Sliced Files,
+    /// which stage nothing.
+    var objectCount: String?
     /// "1h 31m"; nil for Vanilla files and unsliced Plates.
     var printTime: String?
     /// One dot per filament the scene uses, in extruder order; empty when
@@ -23,11 +27,26 @@ struct InfoLineContent: Equatable {
     init(for document: ThreeMFDocument, plate: Plate?) {
         let metrics = document.sceneMetrics(for: plate)
         let filaments = document.slicerProject?.filaments ?? []
+        printerModel = nil
         dimensions = metrics.sizeMillimeters.map(Self.dimensionsText)
         objectCount = Self.objectCountText(metrics.objectCount)
         printTime = (document.stagedPlate(for: plate)?.estimatedPrintTime)
             .map(Self.printTimeText)
         // usedFilamentIndices only returns valid indices into filaments.
+        filamentColors = document.usedFilamentIndices(for: plate)
+            .compactMap { filaments[$0].color }
+    }
+
+    /// The segments for a Sliced File's plate (issue #8): printer model,
+    /// estimated print time, and the filaments its G-code uses. Never
+    /// dimensions or object count — the geometry they would describe is
+    /// stripped from these packages.
+    init(forSlicedPlate plate: Plate?, in document: ThreeMFDocument) {
+        let filaments = document.slicerProject?.filaments ?? []
+        printerModel = document.slicerProject?.printerModel
+        dimensions = nil
+        objectCount = nil
+        printTime = plate?.estimatedPrintTime.map(Self.printTimeText)
         filamentColors = document.usedFilamentIndices(for: plate)
             .compactMap { filaments[$0].color }
     }
@@ -66,7 +85,8 @@ struct InfoLineContent: Equatable {
 
 /// The Info Line (CONTEXT.md): the single unobtrusive line of metadata in the
 /// Viewer — bounding dimensions and object count for every file, plus
-/// estimated print time and filament color dots for Slicer Projects. The only
+/// estimated print time and filament color dots for Slicer Projects. Sliced
+/// Files swap the geometry facts for the printer model (issue #8). The only
 /// text chrome in the preview, in the same vibrancy material as the
 /// Filmstrip. Absent metadata drops its segment — no placeholders, no dashes.
 struct InfoLine: View {
@@ -94,7 +114,8 @@ struct InfoLine: View {
     }
 
     private var textSegments: [String] {
-        [content.dimensions, content.objectCount, content.printTime].compactMap { $0 }
+        [content.printerModel, content.dimensions, content.objectCount, content.printTime]
+            .compactMap { $0 }
     }
 
     private var accessibilitySummary: String {

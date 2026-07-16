@@ -13,17 +13,25 @@ public struct ThreeMFDocument: Equatable, Sendable {
     /// Vanilla files — including PrusaSlicer projects, which are Vanilla-plus
     /// (CONTEXT.md).
     public var slicerProject: SlicerProjectInfo?
+    /// Whether the package is a Sliced File (CONTEXT.md): sliced G-code plus
+    /// plate thumbnails, mesh geometry stripped. Detected by content (the
+    /// G-code parts), never by filename. Sliced Files preview as their plate
+    /// images plus print metadata — never as a 3D scene — so `objects` and
+    /// `buildItems` are always empty when this is true.
+    public var isSlicedFile: Bool
 
     public init(
         unit: LengthUnit = .millimeter,
         objects: [ObjectResource] = [],
         buildItems: [BuildItem] = [],
-        slicerProject: SlicerProjectInfo? = nil
+        slicerProject: SlicerProjectInfo? = nil,
+        isSlicedFile: Bool = false
     ) {
         self.unit = unit
         self.objects = objects
         self.buildItems = buildItems
         self.slicerProject = slicerProject
+        self.isSlicedFile = isSlicedFile
     }
 
     public func object(_ ref: ResourceRef) -> ObjectResource? {
@@ -61,17 +69,22 @@ public struct SlicerProjectInfo: Equatable, Sendable {
     /// The printable bed rectangle (model units), from `printable_area`;
     /// nil when the project doesn't record one.
     public var plateRect: PlateRect?
+    /// The printer the project targets, as `project_settings.config` records
+    /// it ("Bambu Lab X1 Carbon"); nil when the project doesn't say.
+    public var printerModel: String?
 
     public init(
         filaments: [Filament] = [],
         plates: [Plate] = [],
         filamentIndexByObject: [ResourceRef: Int] = [:],
-        plateRect: PlateRect? = nil
+        plateRect: PlateRect? = nil,
+        printerModel: String? = nil
     ) {
         self.filaments = filaments
         self.plates = plates
         self.filamentIndexByObject = filamentIndexByObject
         self.plateRect = plateRect
+        self.printerModel = printerModel
     }
 
     /// The Plate the preview shows by default: the first one that has

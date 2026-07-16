@@ -133,4 +133,49 @@ import ThreeMFKit
         let doc = Self.cubeDocument(slicerProject: SlicerProjectInfo(plates: [sliced]))
         #expect(InfoLineContent(for: doc, plate: nil) == InfoLineContent(for: doc, plate: sliced))
     }
+
+    // MARK: Sliced Files (issue #8)
+
+    /// A Sliced File document: no geometry, configs only.
+    private static func slicedDocument(
+        plates: [Plate], filaments: [Filament] = [], printerModel: String? = nil
+    ) -> ThreeMFDocument {
+        ThreeMFDocument(
+            slicerProject: SlicerProjectInfo(
+                filaments: filaments, plates: plates, printerModel: printerModel),
+            isSlicedFile: true)
+    }
+
+    @Test func slicedPlateLineShowsPrinterTimeAndDotsButNeverGeometryFacts() {
+        let green = ColorRGBA(red: 0, green: 0xAE, blue: 0x42)
+        let plate = Plate(id: 1, estimatedPrintTime: 3720, usedFilamentIndices: [0])
+        let doc = Self.slicedDocument(
+            plates: [plate],
+            filaments: [Filament(color: green, type: "PLA")],
+            printerModel: "Bambu Lab P1S")
+
+        let content = InfoLineContent(forSlicedPlate: plate, in: doc)
+        #expect(content.printerModel == "Bambu Lab P1S")
+        #expect(content.dimensions == nil)
+        #expect(content.objectCount == nil)
+        #expect(content.printTime == "1h 2m")
+        #expect(content.filamentColors == [green])
+    }
+
+    @Test func slicedLineDropsAbsentSegments() {
+        let content = InfoLineContent(
+            forSlicedPlate: Plate(id: 1), in: Self.slicedDocument(plates: [Plate(id: 1)]))
+        #expect(content.printerModel == nil)
+        #expect(content.printTime == nil)
+        #expect(content.filamentColors.isEmpty)
+    }
+
+    @Test func geometryLineNeverShowsThePrinterModel() {
+        // The printer model is Sliced-File chrome only; the Viewer's Info
+        // Line keeps its issue-7 segments even when the project records one.
+        let doc = Self.cubeDocument(slicerProject: SlicerProjectInfo(
+            plates: [Plate(id: 1, objectRefs: [Self.ref(1)])],
+            printerModel: "Bambu Lab X1 Carbon"))
+        #expect(InfoLineContent(for: doc, plate: nil).printerModel == nil)
+    }
 }

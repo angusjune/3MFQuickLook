@@ -16,10 +16,12 @@ import ThreeMFKit
         let doc = try ThreeMFParser().parse(fileAt: Corpus.url("slicer-projects/FlightScnr.3mf"))
         let slicer = try #require(doc.slicerProject)
 
-        // project_settings.config: filament_colour ["#000000"], filament_type ["PLA"].
+        // project_settings.config: filament_colour ["#000000"], filament_type
+        // ["PLA"], printer_model "Bambu Lab X1 Carbon".
         #expect(slicer.filaments.count == 1)
         #expect(slicer.filaments.first?.color == ColorRGBA(red: 0, green: 0, blue: 0))
         #expect(slicer.filaments.first?.type == "PLA")
+        #expect(slicer.printerModel == "Bambu Lab X1 Carbon")
 
         // model_settings.config: one <plate> (plater_id 1, empty plater_name)
         // holding model_instances for objects 2, 4, 6.

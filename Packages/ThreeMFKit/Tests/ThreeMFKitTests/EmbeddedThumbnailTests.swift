@@ -1,7 +1,6 @@
 import Foundation
 import Testing
 import ThreeMFKit
-import ZIPFoundation
 
 /// Parse-seam tests for Embedded Thumbnail extraction (issue #5): given this
 /// package, the parser yields this embedded image — cheaply, without parsing
@@ -53,7 +52,7 @@ import ZIPFoundation
     /// though a full parse of the same package throws.
     @Test func extractionSkipsGeometryEvenWhenTheModelPartIsUnparseable() throws {
         let png = Self.pngMagic + Data("fake-image-body".utf8)
-        let url = try writePackage(parts: [
+        let url = try writeTemporaryPackage(named: "embedded-thumbnail", parts: [
             ("_rels/.rels", Data("""
             <?xml version="1.0" encoding="UTF-8"?>
             <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -102,19 +101,4 @@ import ZIPFoundation
         #expect(extractTime < parseTime / 10)
     }
 
-    /// Writes a 3MF package from raw (path, bytes) parts.
-    private func writePackage(parts: [(String, Data)]) throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("embedded-thumbnail-\(UUID().uuidString)")
-            .appendingPathExtension("3mf")
-        let archive = try Archive(url: url, accessMode: .create)
-        for (path, data) in parts {
-            try archive.addEntry(
-                with: path, type: .file, uncompressedSize: Int64(data.count),
-                provider: { position, size in
-                    data.subdata(in: Int(position)..<Int(position) + size)
-                })
-        }
-        return url
-    }
 }
