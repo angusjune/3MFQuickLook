@@ -18,6 +18,7 @@ public enum SceneBuilder {
     @MainActor
     public static func makeScene(for document: ThreeMFDocument, plate: Plate? = nil) -> Entity {
         let root = Entity()
+        root.name = "Scene"
 
         let model = makeModelSubtree(for: document, plate: plate)
         root.addChild(model)

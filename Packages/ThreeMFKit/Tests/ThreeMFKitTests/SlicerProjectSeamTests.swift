@@ -32,7 +32,8 @@ import ThreeMFKit
         })
         #expect(plate.thumbnailPartPath == "/Metadata/plate_1.png")
         // The package contains that part (8521 bytes, `unzip -l`); a full
-        // parse extracts it so the Filmstrip never re-opens the file.
+        // parse extracts it so Plate Thumbnails render without re-opening
+        // the file.
         #expect(plate.thumbnailData?.count == 8521)
         #expect(slicer.defaultPlate == plate)
 

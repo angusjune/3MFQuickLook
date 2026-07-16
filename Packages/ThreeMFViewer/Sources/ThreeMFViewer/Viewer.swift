@@ -14,8 +14,7 @@ let viewerLogger = Logger(subsystem: "com.angusjune.ThreeMFViewer", category: "v
 /// objects from the already-parsed document — the file is never re-read.
 public struct Viewer: View {
     private let document: ThreeMFDocument
-    private let filmstripPlates: [Plate]
-    private let plateThumbnails: [NSImage?]
+    private let filmstripCells: [PlateFilmstrip.Cell]
 
     @State private var scene: Entity
     @State private var rig: CameraRig
@@ -24,12 +23,8 @@ public struct Viewer: View {
     @MainActor
     public init(document: ThreeMFDocument) {
         self.document = document
-        let filmstripPlates = PlateFilmstrip.plates(of: document)
-        self.filmstripPlates = filmstripPlates
-        // Decode Plate Thumbnails once; the filmstrip re-renders on every
-        // camera tick and must not re-decode PNGs.
-        self.plateThumbnails = filmstripPlates.map {
-            $0.thumbnailData.flatMap(NSImage.init(data:))
+        self.filmstripCells = PlateFilmstrip.plates(of: document).map {
+            PlateFilmstrip.Cell(plate: $0, thumbnail: $0.thumbnailData.flatMap(NSImage.init(data:)))
         }
         let scene = SceneBuilder.makeScene(for: document)
         _scene = State(initialValue: scene)
@@ -49,7 +44,7 @@ public struct Viewer: View {
             viewerLogger.info("viewer scene: bounds \(String(describing: SceneBuilder.modelBounds(of: scene)), privacy: .public), camera at \(String(describing: rig.transform.translation), privacy: .public)")
         } update: { content in
             // A Plate switch rebuilt the scene entity; swap it in place.
-            if let stale = content.entities.first(where: { $0.name != "RigCamera" && $0 !== scene }) {
+            if let stale = content.entities.first(where: { $0.name == "Scene" && $0 !== scene }) {
                 content.remove(stale)
                 content.add(scene)
             }
@@ -59,10 +54,9 @@ public struct Viewer: View {
         }
         .overlay(CameraGestureSurface(rig: $rig))
         .overlay(alignment: .bottom) {
-            if !filmstripPlates.isEmpty {
+            if !filmstripCells.isEmpty {
                 PlateFilmstrip(
-                    plates: filmstripPlates,
-                    thumbnails: plateThumbnails,
+                    cells: filmstripCells,
                     selectedIndex: selectedPlateIndex,
                     select: switchToPlate)
             }
@@ -73,11 +67,11 @@ public struct Viewer: View {
     /// camera at the new content. Only the rig's target and distance change,
     /// so the user's orbit orientation survives the switch.
     private func switchToPlate(at index: Int) {
-        guard index != selectedPlateIndex, filmstripPlates.indices.contains(index) else { return }
+        guard index != selectedPlateIndex, filmstripCells.indices.contains(index) else { return }
         selectedPlateIndex = index
-        scene = SceneBuilder.makeScene(for: document, plate: filmstripPlates[index])
+        scene = SceneBuilder.makeScene(for: document, plate: filmstripCells[index].plate)
         rig.frame(SceneBuilder.modelBounds(of: scene))
-        viewerLogger.info("switched to plate \(index + 1, privacy: .public) of \(filmstripPlates.count, privacy: .public)")
+        viewerLogger.info("switched to plate \(index + 1, privacy: .public) of \(filmstripCells.count, privacy: .public)")
     }
 }
 

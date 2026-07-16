@@ -514,6 +514,27 @@ import ThreeMFViewer
         #expect(modelEntities(in: try modelSubtree(of: plate1)).filter { $0.model != nil }.isEmpty)
     }
 
+    @Test(.enabled(if: corpusHas("slicer-projects/synthetic_multiplate.3mf")))
+    func plateSwitchingNeedsNoFileAccessAfterTheParse() throws {
+        // The issue #6 guarantee, made physical: parse a copy of the fixture,
+        // DELETE it, then build every per-plate scene and read every Plate
+        // Thumbnail. Switching Plates on a loaded document never re-reads
+        // the file.
+        let source = Self.corpusRoot.appendingPathComponent("slicer-projects/synthetic_multiplate.3mf")
+        let copy = FileManager.default.temporaryDirectory
+            .appendingPathComponent("no-reparse-\(UUID().uuidString).3mf")
+        try FileManager.default.copyItem(at: source, to: copy)
+        let document = try ThreeMFParser().parse(fileAt: copy)
+        try FileManager.default.removeItem(at: copy)
+
+        let plates = try #require(document.slicerProject?.plates)
+        for plate in plates {
+            let scene = SceneBuilder.makeScene(for: document, plate: plate)
+            #expect(scene.findEntity(named: "Model") != nil)
+        }
+        #expect(plates.contains { $0.thumbnailData != nil })
+    }
+
     // MARK: Staging
 
     @Test func sceneHasStudioLightingWithAShadowCastingKeyLight() throws {

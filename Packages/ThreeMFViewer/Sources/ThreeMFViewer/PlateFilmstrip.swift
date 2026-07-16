@@ -10,10 +10,16 @@ import ThreeMFKit
 /// (file navigation) and Space (close), so the Filmstrip never handles keys
 /// (PRD constraint).
 struct PlateFilmstrip: View {
-    let plates: [Plate]
-    /// One decoded Plate Thumbnail per plate (same order); nil entries show
-    /// the numbered placeholder. Decoded once by the Viewer, not per render.
-    let thumbnails: [NSImage?]
+    /// One Filmstrip entry: a Plate with its decoded Plate Thumbnail, nil
+    /// when the plate has none (the numbered placeholder shows instead).
+    /// Built once by the Viewer — the filmstrip re-renders on every camera
+    /// tick and must not re-decode PNGs.
+    struct Cell {
+        let plate: Plate
+        let thumbnail: NSImage?
+    }
+
+    let cells: [Cell]
     let selectedIndex: Int?
     let select: (Int) -> Void
 
@@ -28,22 +34,21 @@ struct PlateFilmstrip: View {
     var body: some View {
         // Hug the content when it fits; wider strips scroll horizontally.
         ViewThatFits(in: .horizontal) {
-            cells
-            ScrollView(.horizontal) { cells }
+            strip
+            ScrollView(.horizontal) { strip }
                 .scrollIndicators(.never)
         }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(12)
     }
 
-    private var cells: some View {
+    private var strip: some View {
         HStack(spacing: 6) {
-            // Selection is by position: slicer plater_ids are not guaranteed
-            // unique in malformed files.
-            ForEach(plates.indices, id: \.self) { index in
-                PlateCell(
-                    plate: plates[index],
-                    thumbnail: thumbnails.indices.contains(index) ? thumbnails[index] : nil,
+            // Selection is by position, not plate id (see
+            // SlicerProjectInfo.defaultPlateIndex for why ids can't be keys).
+            ForEach(cells.indices, id: \.self) { index in
+                PlateCellView(
+                    cell: cells[index],
                     isSelected: index == selectedIndex,
                     select: { select(index) })
             }
@@ -54,9 +59,8 @@ struct PlateFilmstrip: View {
 
 /// One clickable Plate Thumbnail; a Plate without a saved thumbnail shows its
 /// number on a quiet placeholder instead.
-private struct PlateCell: View {
-    let plate: Plate
-    let thumbnail: NSImage?
+private struct PlateCellView: View {
+    let cell: PlateFilmstrip.Cell
     let isSelected: Bool
     let select: () -> Void
 
@@ -79,7 +83,7 @@ private struct PlateCell: View {
 
     @ViewBuilder
     private var content: some View {
-        if let thumbnail {
+        if let thumbnail = cell.thumbnail {
             Image(nsImage: thumbnail)
                 .resizable()
                 .interpolation(.high)
@@ -88,12 +92,12 @@ private struct PlateCell: View {
             Rectangle()
                 .fill(.quaternary)
                 .overlay {
-                    Text("\(plate.id)")
+                    Text("\(cell.plate.id)")
                         .font(.system(.title3, design: .rounded, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
         }
     }
 
-    private var name: String { plate.name ?? "Plate \(plate.id)" }
+    private var name: String { cell.plate.name ?? "Plate \(cell.plate.id)" }
 }

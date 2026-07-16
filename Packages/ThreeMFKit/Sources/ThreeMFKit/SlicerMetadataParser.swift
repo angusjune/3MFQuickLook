@@ -24,8 +24,9 @@ enum SlicerMetadataParser {
         if let project = package.partDataIfPresent(at: projectSettingsPath) {
             applyProjectSettings(project, to: &info)
         }
-        // Pull the Plate Thumbnail bytes now, while the package is open: the
-        // Filmstrip must never re-open the file to switch Plates.
+        // Pull the Plate Thumbnail bytes now, while the package is open:
+        // consumers switch Plates on the already-parsed document and must
+        // never re-open the file (issue #6).
         for index in info.plates.indices {
             info.plates[index].thumbnailData = info.plates[index].thumbnailPartPath
                 .flatMap { package.partDataIfPresent(at: $0) }
