@@ -116,6 +116,55 @@ import ThreeMFKit
         #expect(slicer.plates[2].thumbnailData == nil)
     }
 
+    @Test(.enabled(if: Corpus.has("slicer-projects/synthetic_multiplate.3mf")))
+    func slicedPlateExposesPredictionAndUsedFilaments() throws {
+        let doc = try ThreeMFParser().parse(
+            fileAt: Corpus.url("slicer-projects/synthetic_multiplate.3mf"))
+        let slicer = try #require(doc.slicerProject)
+
+        // slice_info.config: only plate 2 was sliced — prediction 5460 s,
+        // one <filament id="1"> → filament index 0.
+        #expect(slicer.plates[1].estimatedPrintTime == 5460)
+        #expect(slicer.plates[1].usedFilamentIndices == [0])
+        #expect(doc.usedFilamentIndices(for: slicer.plates[1]) == [0])
+
+        // Plates 1 and 3 were never sliced: no print time, and the used
+        // filaments derive from assignments instead — plate 3's pyramid is
+        // extruder 2 with its Topper part overridden to extruder 1.
+        #expect(slicer.plates[0].estimatedPrintTime == nil)
+        #expect(slicer.plates[2].estimatedPrintTime == nil)
+        #expect(slicer.plates[2].usedFilamentIndices == nil)
+        #expect(doc.usedFilamentIndices(for: slicer.plates[2]) == [0, 1])
+    }
+
+    @Test(.enabled(if: Corpus.has("slicer-projects/synthetic_multiplate.3mf")))
+    func plateMetricsMeasureTheStagedGeometry() throws {
+        let doc = try ThreeMFParser().parse(
+            fileAt: Corpus.url("slicer-projects/synthetic_multiplate.3mf"))
+        let slicer = try #require(doc.slicerProject)
+
+        // Plate 2: the 20 mm cube, one placed object.
+        #expect(doc.sceneMetrics(for: slicer.plates[1])
+            == SceneMetrics(sizeMillimeters: SIMD3(20, 20, 20), objectCount: 1))
+        // Plate 3: 30 mm pyramid plus the 10 mm topper lifted 15 → z 0…25.
+        #expect(doc.sceneMetrics(for: slicer.plates[2])
+            == SceneMetrics(sizeMillimeters: SIMD3(30, 30, 25), objectCount: 1))
+        // Plate 1 is genuinely empty.
+        #expect(doc.sceneMetrics(for: slicer.plates[0]) == SceneMetrics(objectCount: 0))
+    }
+
+    @Test(.enabled(if: Corpus.has("slicer-projects/FlightScnr.3mf")))
+    func unslicedProjectHasNoPrintTimeButDerivesItsFilament() throws {
+        // FlightScnr's slice_info.config is a bare header (saved unsliced):
+        // no prediction, no per-plate filament list.
+        let doc = try ThreeMFParser().parse(fileAt: Corpus.url("slicer-projects/FlightScnr.3mf"))
+        let plate = try #require(doc.slicerProject?.plates.first)
+        #expect(plate.estimatedPrintTime == nil)
+        #expect(plate.usedFilamentIndices == nil)
+        // All objects are assigned extruder 1 → the single filament derives.
+        #expect(doc.usedFilamentIndices(for: plate) == [0])
+    }
+
     @Test func defaultPlateIsNilWhenNoPlateHasObjects() {
         let info = SlicerProjectInfo(plates: [Plate(id: 1), Plate(id: 2)])
         #expect(info.defaultPlate == nil)

@@ -124,19 +124,33 @@ public struct Plate: Equatable, Sendable {
     /// the Plate Filmstrip renders without re-opening the package; nil when
     /// the plate declares no thumbnail or the part is missing.
     public var thumbnailData: Data?
+    /// Estimated print time in seconds, from the plate's `prediction` in
+    /// `Metadata/slice_info.config`; nil for plates that were never sliced —
+    /// slicers only record it after slicing.
+    public var estimatedPrintTime: TimeInterval?
+    /// 0-based indices into ``SlicerProjectInfo/filaments`` of the filaments
+    /// this plate's sliced G-code actually uses, from the plate's `filament`
+    /// entries in `slice_info.config`; nil for plates that were never sliced
+    /// (``ThreeMFDocument/usedFilamentIndices(for:)`` derives them from the
+    /// object assignments instead).
+    public var usedFilamentIndices: [Int]?
 
     public init(
         id: Int,
         name: String? = nil,
         objectRefs: [ResourceRef] = [],
         thumbnailPartPath: String? = nil,
-        thumbnailData: Data? = nil
+        thumbnailData: Data? = nil,
+        estimatedPrintTime: TimeInterval? = nil,
+        usedFilamentIndices: [Int]? = nil
     ) {
         self.id = id
         self.name = name
         self.objectRefs = objectRefs
         self.thumbnailPartPath = thumbnailPartPath
         self.thumbnailData = thumbnailData
+        self.estimatedPrintTime = estimatedPrintTime
+        self.usedFilamentIndices = usedFilamentIndices
     }
 }
 

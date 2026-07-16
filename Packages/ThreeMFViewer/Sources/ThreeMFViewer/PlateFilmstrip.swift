@@ -38,8 +38,9 @@ struct PlateFilmstrip: View {
             ScrollView(.horizontal) { strip }
                 .scrollIndicators(.never)
         }
+        // Outer padding is the Viewer's: it stacks the Filmstrip with the
+        // Info Line inside one padded bottom overlay.
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .padding(12)
     }
 
     private var strip: some View {
