@@ -19,7 +19,7 @@ Glossary of the ubiquitous language for this project. Terms are canonical; use t
 ## Viewer concepts
 
 - **Plate Filmstrip** — the horizontal strip of Plate Thumbnails along the bottom of the Viewer used to switch Plates; hidden when a file has one Plate or none.
-- **Geometry Budget** — the hard per-plate limit on geometry the Preview Extension will load. Under budget: interactive 3D. Over budget: the preview stays on the Embedded Thumbnail with a hint to open the Host App, which has no budget.
+- **Geometry Budget** — the hard limit on geometry the Preview and Thumbnail Extensions will load, enforced at parse time as one pool for the whole package (which upper-bounds every Plate — geometry memory is committed before Plates resolve; see docs/geometry-budget.md). Under budget: interactive 3D. Over budget: the preview stays on the Embedded Thumbnail with a hint to open the Host App, which has no budget.
 - **Info Line** — the single unobtrusive line of metadata shown in the Viewer: model dimensions, object count, and for Slicer Projects, print time and filament color dots. The only text chrome in the preview.
 - **Plate Hint** — the flat outline the Viewer draws beneath a Slicer Project at the true plate size (from the project's printable-area metadata), standing in for the slicer's bed. Slicer Projects only; Vanilla 3MF keeps the plain backdrop.
 

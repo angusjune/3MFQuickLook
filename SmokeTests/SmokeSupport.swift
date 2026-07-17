@@ -59,11 +59,17 @@ enum Smoke {
             .contains(identifier)
     }
 
-    /// All live ThumbExt process ids.
-    static func thumbExtPids() -> [pid_t] {
-        (output(of: "/usr/bin/pgrep", ["ThumbExt"]) ?? "")
+    /// All live processes of one of our extensions ("ThumbExt"/"PreviewExt").
+    static func extensionPids(_ name: String) -> [pid_t] {
+        (output(of: "/usr/bin/pgrep", [name]) ?? "")
             .split(separator: "\n")
             .compactMap { pid_t($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    /// Kills lingering ThumbExt workers so a following batch's measured
+    /// lifetime peak belongs to a fresh process.
+    static func killThumbExt() {
+        _ = output(of: "/usr/bin/pkill", ["-f", "ThumbExt"])
     }
 
     /// The process's lifetime peak physical footprint in MB — the same

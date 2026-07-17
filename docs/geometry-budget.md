@@ -82,7 +82,17 @@ drives the whole pathological corpus (zip bombs, image bomb, both
 over-budget files, all the corrupt shapes) through `QLThumbnailGenerator`
 and reads the extension's lifetime peak via `proc_pid_rusage`:
 **281 MB** — the budget abort fires before render buffers ever allocate,
-so hostile files cost *less* than legitimate ones.
+so hostile files cost *less* than legitimate ones. The smoke assertion
+trips at 700 MB — the design-point peak (496 MB) plus margin — not at the
+RunningBoard ceiling, so a memory regression fails long before jetsam
+territory.
+
+The Preview Extension has no headless driver (`QLThumbnailGenerator`
+reaches only the Thumbnail Extension; the panel needs real Finder), so its
+number comes from instrumenting the live process after a Finder session
+covering the over-budget preview and a normal 3D preview: **314 MB** peak.
+The smoke test reads any live PreviewExt process opportunistically and
+holds it to the same bound.
 
 ## Zip-bomb caps (same preset)
 

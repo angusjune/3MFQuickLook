@@ -66,10 +66,16 @@ import Testing
         }
     }
 
+    /// The regression bound on extension peak memory: the profiled design
+    /// point (496 MB at exactly the Geometry Budget) plus margin, far below
+    /// the 1324 MB RunningBoard soft limit — a leak fails here long before
+    /// jetsam territory (docs/geometry-budget.md).
+    private static let peakFootprintBoundMB = 700.0
+
     /// Every pathological corpus file resolves — image or graceful refusal
-    /// — and the Thumbnail Extension's lifetime peak footprint stays under
-    /// the extension ceiling. The suite-level acceptance criteria of
-    /// issue #10 in one pass.
+    /// — and the extensions' lifetime peak footprints stay within the
+    /// regression bound. The suite-level acceptance criteria of issue #10
+    /// in one pass.
     @Test(
         .timeLimit(.minutes(5)),
         .enabled(if: Smoke.hasCorpusFile("pathological/overbudget_grid.3mf")))
@@ -77,7 +83,7 @@ import Testing
         try await Smoke.registerHostApp()
         // Start from a fresh extension process so the measured lifetime peak
         // belongs to this batch.
-        _ = try? await run("/usr/bin/pkill", ["-f", "ThumbExt"])
+        Smoke.killThumbExt()
         try await Task.sleep(for: .seconds(1))
 
         for (file, expectsImage) in Self.pathologicalCases {
@@ -98,13 +104,22 @@ import Testing
             #expect(elapsed < .seconds(60), "\(file) stalled: \(elapsed)")
         }
 
-        let peaks = Smoke.thumbExtPids().compactMap(Smoke.peakFootprintMB(of:))
-        let peak = peaks.max() ?? 0
-        #expect(!peaks.isEmpty, "no live ThumbExt process to instrument")
+        let thumbPeaks = Smoke.extensionPids("ThumbExt").compactMap(Smoke.peakFootprintMB(of:))
+        let peak = thumbPeaks.max() ?? 0
+        #expect(!thumbPeaks.isEmpty, "no live ThumbExt process to instrument")
         #expect(
-            peak < 1324,
-            "ThumbExt peak \(peak) MB is over the measured extension ceiling")
+            peak < Self.peakFootprintBoundMB,
+            "ThumbExt peak \(peak) MB is over the regression bound")
         print("ThumbExt peak footprint over the pathological corpus: \(Int(peak)) MB")
+
+        // The panel has no headless driver, so PreviewExt is instrumented
+        // opportunistically: whenever a Finder session left one alive, it is
+        // held to the same bound.
+        for previewPeak in Smoke.extensionPids("PreviewExt").compactMap(Smoke.peakFootprintMB(of:)) {
+            #expect(
+                previewPeak < Self.peakFootprintBoundMB,
+                "PreviewExt peak \(previewPeak) MB is over the regression bound")
+        }
     }
 
     /// A folder of 50 corpus files — valid, hostile, and broken, all
@@ -126,15 +141,13 @@ import Testing
             "slicer-projects/synthetic_prusa.3mf", "slicer-projects/FlightScnr.3mf",
             "sliced/synthetic_single.gcode.3mf", "sliced/synthetic_multiplate.gcode.3mf",
         ].filter(Smoke.hasCorpusFile)
-        let hostile = [
-            "pathological/garbage_bytes.3mf", "pathological/text_stub.3mf",
-            "pathological/empty.3mf", "pathological/truncated_box.3mf",
-            "pathological/no_rels.3mf", "pathological/rels_no_model.3mf",
-            "pathological/missing_model_part.3mf", "pathological/malformed_model_xml.3mf",
-            "pathological/zipbomb_model.3mf", "pathological/zipbomb_thumbnail.3mf",
-            "pathological/imagebomb_thumbnail.3mf", "pathological/billion_laughs.3mf",
-            "pathological/deep_xml.3mf", "pathological/overbudget_with_thumb.3mf",
-        ].filter(Smoke.hasCorpusFile)
+        // One list of pathological fixtures — the batch test's — so a new
+        // fixture joins the folder flood automatically. overbudget_grid is
+        // deliberately in: the slowest refusal is exactly the stall
+        // candidate this test exists to catch.
+        let hostile = Self.pathologicalCases
+            .map { "pathological/\($0.file)" }
+            .filter(Smoke.hasCorpusFile)
         try #require(!valid.isEmpty, "no valid corpus files present")
 
         let folder = FileManager.default.temporaryDirectory
@@ -176,13 +189,5 @@ import Testing
             return failures
         }
         #expect(failures.isEmpty, "valid files without thumbnails: \(failures)")
-    }
-
-    private func run(_ executable: String, _ arguments: [String]) async throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        try process.run()
-        process.waitUntilExit()
     }
 }

@@ -113,15 +113,8 @@ import ThreeMFKit
         // An OPC thumbnail relationship pointing at a multi-megabyte "PNG":
         // under the materialized-part cap the bytes are never loaded, and the
         // seam degrades to "no embedded thumbnail" instead of failing.
-        let rels = """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-             <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
-             <Relationship Target="/Metadata/thumbnail.png" Id="rel-2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"/>
-            </Relationships>
-            """
         let url = try writeTemporaryPackage(named: "thumb-bomb", parts: [
-            ("_rels/.rels", Data(rels.utf8)),
+            ("_rels/.rels", Data(relsWithThumbnailXML.utf8)),
             ("3D/3dmodel.model", Data(boxModelXML(triangles: 12, vertices: 8).utf8)),
             ("Metadata/thumbnail.png", Data(repeating: 0x20, count: 2 * 1024 * 1024)),
         ])

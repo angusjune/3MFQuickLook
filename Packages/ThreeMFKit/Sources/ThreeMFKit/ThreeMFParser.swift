@@ -92,10 +92,11 @@ public struct ThreeMFParser: Sendable {
                 parts[path] = part
                 partOrder.append(path)
                 pending.append(contentsOf: part.referencedPartPaths.filter { parts[$0] == nil })
-            } catch ThreeMFParseError.overGeometryBudget {
+            } catch ThreeMFParseError.overGeometryBudget(let partBudget) {
                 // The part reports its remaining slice; the seam reports the
                 // configured budget.
-                throw ThreeMFParseError.overGeometryBudget(budget: limits.geometryBudget ?? 0)
+                throw ThreeMFParseError.overGeometryBudget(
+                    budget: limits.geometryBudget ?? partBudget)
             }
             remainingBudget = remainingBudget.map { $0 - parser.geometryConsumed }
         }

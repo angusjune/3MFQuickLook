@@ -22,44 +22,36 @@ import ThreeMFKit
 
     // MARK: Malformed input → typed failures
 
-    @Test func garbageBytesFailAsUnreadableArchive() throws {
-        let url = try writeRawFile(
-            named: "garbage", bytes: Data((0..<4096).map { _ in UInt8.random(in: 0...255) }))
+    /// Parsing must fail with `.unreadableArchive` specifically — the
+    /// associated reason string varies, so `#expect(throws:)` can't match.
+    private func expectUnreadableArchive(_ bytes: Data, named name: String) throws {
+        let url = try writeRawFile(named: name, bytes: bytes)
         defer { try? FileManager.default.removeItem(at: url) }
 
-        #expect(throws: ThreeMFParseError.self) {
-            try ThreeMFParser().parse(fileAt: url)
+        do {
+            _ = try ThreeMFParser().parse(fileAt: url)
+            Issue.record("\(name) parsed as a package")
+        } catch let error as ThreeMFParseError {
+            guard case .unreadableArchive = error else {
+                Issue.record("\(name): expected unreadableArchive, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("\(name) threw an untyped error: \(error)")
         }
+    }
+
+    @Test func garbageBytesFailAsUnreadableArchive() throws {
+        try expectUnreadableArchive(
+            Data((0..<4096).map { _ in UInt8.random(in: 0...255) }), named: "garbage")
     }
 
     @Test func fifteenByteTextStubFailsAsUnreadableArchive() throws {
-        let url = try writeRawFile(named: "stub", bytes: Data("not a 3mf file\n".utf8))
-        defer { try? FileManager.default.removeItem(at: url) }
-
-        do {
-            _ = try ThreeMFParser().parse(fileAt: url)
-            Issue.record("text stub parsed as a package")
-        } catch let error as ThreeMFParseError {
-            guard case .unreadableArchive = error else {
-                Issue.record("expected unreadableArchive, got \(error)")
-                return
-            }
-        }
+        try expectUnreadableArchive(Data("not a 3mf file\n".utf8), named: "stub")
     }
 
     @Test func emptyFileFailsAsUnreadableArchive() throws {
-        let url = try writeRawFile(named: "empty", bytes: Data())
-        defer { try? FileManager.default.removeItem(at: url) }
-
-        do {
-            _ = try ThreeMFParser().parse(fileAt: url)
-            Issue.record("empty file parsed as a package")
-        } catch let error as ThreeMFParseError {
-            guard case .unreadableArchive = error else {
-                Issue.record("expected unreadableArchive, got \(error)")
-                return
-            }
-        }
+        try expectUnreadableArchive(Data(), named: "empty")
     }
 
     @Test func truncatedArchiveFailsTyped() throws {
@@ -167,6 +159,16 @@ let relsXML = """
     <?xml version="1.0" encoding="UTF-8"?>
     <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
      <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+    </Relationships>
+    """
+
+/// `relsXML` plus an OPC Package Thumbnail relationship to
+/// /Metadata/thumbnail.png.
+let relsWithThumbnailXML = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+     <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+     <Relationship Target="/Metadata/thumbnail.png" Id="rel-2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"/>
     </Relationships>
     """
 
