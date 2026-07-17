@@ -14,9 +14,10 @@ struct DocumentView: View {
     init(data: Data) {
         self.data = data
         // Cheap, geometry-free: paint the Embedded Thumbnail first if the file
-        // carries one.
+        // carries one. Geometry is unlimited here, but the image decode keeps
+        // the bomb guard — a lying PNG header is never legitimate content.
         self.staticImage = (try? ThreeMFParser().embeddedThumbnail(data: data))
-            .flatMap { NSImage(data: $0.data) }
+            .flatMap { PackageImageDecoder.nsImage(from: $0.data) }
     }
 
     var body: some View {

@@ -22,11 +22,14 @@ final class PreviewViewController: NSViewController, @preconcurrency QLPreviewin
         let state = signposter.beginInterval("FirstPaint")
         let start = ContinuousClock.now
 
-        let image = (try? ThreeMFParser().embeddedThumbnail(fileAt: url))
-            .flatMap { NSImage(data: $0.data) }
+        // The extension parses untrusted downloads automatically, so both
+        // reads run under the Geometry Budget and zip-bomb caps (issue #10);
+        // the image decode is capped the same way.
+        let image = (try? ThreeMFParser(limits: .quickLookExtension).embeddedThumbnail(fileAt: url))
+            .flatMap { PackageImageDecoder.nsImage(from: $0.data) }
 
         let rootView = PreviewView(staticImage: image) {
-            try ThreeMFParser().parse(fileAt: url)
+            try ThreeMFParser(limits: .quickLookExtension).parse(fileAt: url)
         }
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = view.bounds

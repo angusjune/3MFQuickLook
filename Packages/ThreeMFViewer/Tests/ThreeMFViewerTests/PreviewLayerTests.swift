@@ -43,6 +43,36 @@ import ThreeMFKit
         #expect(PreviewView.layer(for: .failed, hasStaticImage: false) == .failure)
     }
 
+    // Over-budget files (issue #10) never attempt 3D: the Embedded
+    // Thumbnail stays up with the open-in-app hint, or the hint stands
+    // alone when the package carries no image.
+
+    @Test func overBudgetKeepsTheStaticImageWithTheOpenInAppHint() {
+        #expect(
+            PreviewView.layer(for: .overBudget, hasStaticImage: true)
+                == .overBudget(staticImage: true))
+    }
+
+    @Test func overBudgetShowsTheHintMessageWithoutAStaticImage() {
+        #expect(
+            PreviewView.layer(for: .overBudget, hasStaticImage: false)
+                == .overBudget(staticImage: false))
+    }
+
+    // The phase a parse failure lands in: only the Geometry Budget breach
+    // routes to the over-budget hint — corrupt files keep the honest
+    // failure message.
+
+    @Test func overGeometryBudgetErrorBecomesTheOverBudgetPhase() {
+        let error = ThreeMFParseError.overGeometryBudget(budget: 4_000_000)
+        #expect(PreviewView.failurePhase(for: error) == .overBudget)
+    }
+
+    @Test func otherParseErrorsBecomeTheFailedPhase() {
+        let error = ThreeMFParseError.unreadableArchive("not a zip")
+        #expect(PreviewView.failurePhase(for: error) == .failed)
+    }
+
     // Sliced Files (issue #8) route to their own layer — never the 3D
     // viewer, whatever the static image situation.
 

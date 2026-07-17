@@ -11,6 +11,12 @@ public enum ThreeMFParseError: Error, Equatable {
     case missingModelPart(String)
     /// A model part is not well-formed XML.
     case malformedModelXML(partPath: String)
+    /// The package's geometry exceeds ``ParseLimits/geometryBudget`` —
+    /// over-budget files preview statically instead of in 3D.
+    case overGeometryBudget(budget: Int)
+    /// A model part decompresses past ``ParseLimits/maxStreamedPartBytes``
+    /// (zip-bomb defense).
+    case decompressedPartTooLarge(partPath: String)
 }
 
 /// OPC part references come in both "/3D/x.model" and "3D/x.model" forms;
@@ -29,8 +35,10 @@ final class OPCPackage {
         "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"
 
     private let archive: Archive
+    private let limits: ParseLimits
 
-    init(url: URL) throws {
+    init(url: URL, limits: ParseLimits = .unlimited) throws {
+        self.limits = limits
         do {
             archive = try Archive(url: url, accessMode: .read)
         } catch {
@@ -38,7 +46,8 @@ final class OPCPackage {
         }
     }
 
-    init(data: Data) throws {
+    init(data: Data, limits: ParseLimits = .unlimited) throws {
+        self.limits = limits
         do {
             archive = try Archive(data: data, accessMode: .read)
         } catch {
@@ -46,18 +55,40 @@ final class OPCPackage {
         }
     }
 
-    /// Streams the raw bytes of a part to `consumer` in chunks.
+    /// Streams the raw bytes of a part to `consumer` in chunks, enforcing
+    /// ``ParseLimits/maxStreamedPartBytes`` on the *actual* decompressed
+    /// byte count — a hostile archive's declared sizes can lie.
     /// `partPath` is zip-absolute ("/3D/3dmodel.model").
     func streamPart(at partPath: String, consumer: (Data) throws -> Void) throws {
         guard let entry = archive[String(partPath.drop(while: { $0 == "/" }))] else {
             throw ThreeMFParseError.missingModelPart(partPath)
         }
-        _ = try archive.extract(entry, consumer: consumer)
+        guard let cap = limits.maxStreamedPartBytes else {
+            _ = try archive.extract(entry, consumer: consumer)
+            return
+        }
+        var streamed = 0
+        _ = try archive.extract(entry) { chunk in
+            streamed += chunk.count
+            guard streamed <= cap else {
+                throw ThreeMFParseError.decompressedPartTooLarge(partPath: partPath)
+            }
+            try consumer(chunk)
+        }
     }
 
+    /// The whole part in memory, enforcing
+    /// ``ParseLimits/maxMaterializedPartBytes``. Only garnish parts
+    /// (thumbnails, configs) are materialized; callers reach this through
+    /// ``partDataIfPresent(at:)`` and treat an oversized part as absent.
     func partData(at partPath: String) throws -> Data {
         var data = Data()
-        try streamPart(at: partPath) { data.append($0) }
+        try streamPart(at: partPath) { chunk in
+            data.append(chunk)
+            if let cap = limits.maxMaterializedPartBytes, data.count > cap {
+                throw ThreeMFParseError.decompressedPartTooLarge(partPath: partPath)
+            }
+        }
         return data
     }
 

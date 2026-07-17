@@ -20,6 +20,9 @@ public struct PreviewView: View {
         case loading
         case loaded(ThreeMFDocument)
         case failed
+        /// The package's geometry exceeds the Geometry Budget (issue #10):
+        /// the preview never attempts 3D and points at the Host App instead.
+        case overBudget
     }
 
     @State private var phase: Phase = .loading
@@ -67,6 +70,18 @@ public struct PreviewView: View {
                 loadingState.transition(.opacity)
             case .failure:
                 failureState.transition(.opacity)
+            case .overBudget(staticImage: true):
+                if let staticImage {
+                    Image(nsImage: staticImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .overlay(alignment: .bottomTrailing) { openInAppHint }
+                        .transition(.opacity)
+                }
+            case .overBudget(staticImage: false):
+                overBudgetState.transition(.opacity)
             case .viewer(let document):
                 Viewer(document: document)
                     .transition(.opacity)
@@ -82,7 +97,7 @@ public struct PreviewView: View {
     /// Which single layer the preview shows for a phase. The viewer REPLACES
     /// the static image rather than covering it. When parsing fails but an
     /// embedded image is present, the image simply stays — it is the graceful
-    /// static fallback (the open-in-app hint for over-budget files is #10).
+    /// static fallback.
     static func layer(for phase: Phase, hasStaticImage: Bool) -> Layer {
         switch phase {
         case .loaded(let document) where document.isSlicedFile: .slicedFile(document)
@@ -91,7 +106,16 @@ public struct PreviewView: View {
         case .loading: .loading
         case .failed where hasStaticImage: .staticImage(sceneIsLoading: false)
         case .failed: .failure
+        case .overBudget: .overBudget(staticImage: hasStaticImage)
         }
+    }
+
+    /// The phase a parse failure lands in: only the Geometry Budget breach
+    /// earns the over-budget hint — the file is fine, it is just too big for
+    /// the extension. Everything else is an honest failure.
+    static func failurePhase(for error: Error) -> Phase {
+        if case ThreeMFParseError.overGeometryBudget = error { return .overBudget }
+        return .failed
     }
 
     enum Layer: Equatable {
@@ -104,6 +128,9 @@ public struct PreviewView: View {
         /// Sliced Files never reach the 3D viewer — their honest preview is
         /// the Plate Thumbnails plus print metadata.
         case slicedFile(ThreeMFDocument)
+        /// Over the Geometry Budget (issue #10): the Embedded Thumbnail with
+        /// the open-in-app hint, or the hint alone when there is no image.
+        case overBudget(staticImage: Bool)
     }
 
     private var loadingState: some View {
@@ -121,6 +148,26 @@ public struct PreviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var overBudgetState: some View {
+        ContentUnavailableView {
+            Label("Too Detailed for Quick Look", systemImage: "cube.transparent")
+        } description: {
+            Text("Open in 3MF QuickLook to view the full model.")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The discreet over-budget hint in the image corner — same visual
+    /// posture as the loading spinner it replaces.
+    private var openInAppHint: some View {
+        Text("Open in 3MF QuickLook")
+            .font(.callout)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(12)
+    }
+
     private func run() async {
         let parse = self.parse
         do {
@@ -129,7 +176,8 @@ public struct PreviewView: View {
             }.value
             withAnimation(.easeInOut(duration: 0.35)) { phase = .loaded(document) }
         } catch {
-            withAnimation(.easeInOut(duration: 0.2)) { phase = .failed }
+            let failure = Self.failurePhase(for: error)
+            withAnimation(.easeInOut(duration: 0.2)) { phase = failure }
         }
     }
 }

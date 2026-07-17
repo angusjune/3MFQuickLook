@@ -12,31 +12,20 @@ import UniformTypeIdentifiers
 /// Never probe via `qlmanage -t`: it hangs against extension-based providers
 /// (prototype finding).
 @Suite struct ThumbnailSmokeTests {
-    private static let extensionIDs = [
-        "com.angusjune.ThreeMFQuickLook.PreviewExt",
-        "com.angusjune.ThreeMFQuickLook.ThumbExt",
-    ]
-
-    private static let corpusRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()  // strip ThumbnailSmokeTests.swift
-        .deletingLastPathComponent()  // strip SmokeTests
-        .appendingPathComponent("Corpus")
-
     /// A real vanilla corpus file: with the real parser, a garbage payload
     /// would (correctly) fail, so the smoke fixture must be a valid package.
-    private static let corpusFile = corpusRoot.appendingPathComponent("vanilla/box.3mf")
+    private static let corpusFile = Smoke.corpusFile("vanilla/box.3mf")
 
     /// The painted fixture (issue #9) carries no embedded Plate Thumbnail,
     /// so its thumbnail must come from the mesh-render fallback — the
     /// surface the paint-color acceptance criterion names.
-    private static let paintedCorpusFile = corpusRoot
-        .appendingPathComponent("slicer-projects/synthetic_painted.3mf")
+    private static let paintedCorpusFile = Smoke.corpusFile("slicer-projects/synthetic_painted.3mf")
 
     @Test(
         .timeLimit(.minutes(2)),
         .enabled(if: FileManager.default.fileExists(atPath: corpusFile.path)))
     func thumbnailForA3MFFileHasVisibleContent() async throws {
-        try await registerHostApp()
+        try await Smoke.registerHostApp()
 
         // Copied to a fresh name so Quick Look can't serve a stale cache.
         let fixture = FileManager.default.temporaryDirectory
@@ -70,7 +59,7 @@ import UniformTypeIdentifiers
         .timeLimit(.minutes(2)),
         .enabled(if: FileManager.default.fileExists(atPath: paintedCorpusFile.path)))
     func paintedModelThumbnailShowsItsPaintColors() async throws {
-        try await registerHostApp()
+        try await Smoke.registerHostApp()
 
         let fixture = FileManager.default.temporaryDirectory
             .appendingPathComponent("smoke-painted-\(UUID().uuidString)")
@@ -104,9 +93,9 @@ import UniformTypeIdentifiers
 
     @Test(.timeLimit(.minutes(2)))
     func quickLookContentTypesResolveAfterHostAppRegistration() async throws {
-        try await registerHostApp()
+        try await Smoke.registerHostApp()
 
-        let appURL = try #require(Self.hostAppURL)
+        let appURL = try #require(Smoke.hostAppURL)
         let metadataContentType = spotlightContentType(of: Self.corpusFile)
         for extensionName in ["PreviewExt", "ThumbExt"] {
             let infoURL = appURL
@@ -140,48 +129,6 @@ import UniformTypeIdentifiers
                     "PreviewExt must be declared as a view-based Quick Look preview")
             }
         }
-    }
-
-    /// Launches the built Host App (a sibling of this test bundle in the build
-    /// products directory) so macOS registers its Quick Look extensions, and
-    /// waits until pluginkit reports both extensions.
-    private func registerHostApp() async throws {
-        let appURL = try #require(Self.hostAppURL)
-        try #require(
-            FileManager.default.fileExists(atPath: appURL.path),
-            "Host App not found at \(appURL.path) — build the ThreeMFQuickLook scheme first")
-
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = false
-        configuration.addsToRecentItems = false
-        _ = try await NSWorkspace.shared.openApplication(at: appURL, configuration: configuration)
-
-        let deadline = Date().addingTimeInterval(30)
-        var registered = false
-        while !registered, Date() < deadline {
-            registered = Self.extensionIDs.allSatisfy(pluginkitKnows)
-            if !registered { try await Task.sleep(for: .milliseconds(500)) }
-        }
-        try #require(registered, "extensions never appeared in pluginkit -m: \(Self.extensionIDs)")
-    }
-
-    private static var hostAppURL: URL? {
-        let productsDirectory = Bundle(for: BundleLocator.self).bundleURL
-            .deletingLastPathComponent()
-        return productsDirectory.appendingPathComponent("3MF QuickLook.app")
-    }
-
-    private func pluginkitKnows(_ identifier: String) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pluginkit")
-        process.arguments = ["-m", "-i", identifier]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        do { try process.run() } catch { return false }
-        process.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        return output.contains(identifier)
     }
 
     private func spotlightContentType(of url: URL) -> String? {
@@ -223,5 +170,3 @@ import UniformTypeIdentifiers
         return drewImage ? pixels : []
     }
 }
-
-private final class BundleLocator {}

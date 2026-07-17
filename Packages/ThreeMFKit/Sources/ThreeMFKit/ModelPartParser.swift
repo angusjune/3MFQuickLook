@@ -131,9 +131,49 @@ final class ModelPartSAXParser {
     private var currentGroupColors: [ColorRGBA] = []
     private var context: xmlParserCtxtPtr?
 
-    init(partPath: String) {
+    /// Geometry Budget remaining for this part (issue #10); nil: unlimited.
+    private let geometryBudget: Int?
+    /// Geometry elements (vertices + triangles) materialized so far.
+    private(set) var geometryConsumed = 0
+    private var exceededBudget = false
+    private var exceededDepth = false
+
+    /// Structural sanity cap, enforced for every caller (issue #10): libxml2
+    /// push mode accepts arbitrarily deep nesting, and each level allocates
+    /// in its name stack and ours — a streamed part of pure `<a>` could
+    /// nest hundreds of millions deep within the byte caps. Real 3MF parts
+    /// nest under ~8; a thousand levels is not a model file.
+    static let maxElementDepth = 1024
+
+    init(partPath: String, geometryBudget: Int? = nil) {
         part = ModelPart(partPath: partPath)
+        self.geometryBudget = geometryBudget
         stack.reserveCapacity(16)
+    }
+
+    /// Spends one geometry element of the budget. On the element that
+    /// crosses the budget: stop materializing (the caller skips its append)
+    /// and stop the parser — the whole parse is aborted, so there is no
+    /// point decompressing further.
+    private func consumeGeometry() -> Bool {
+        if exceededBudget { return false }
+        if let geometryBudget, geometryConsumed >= geometryBudget {
+            exceededBudget = true
+            if let context { xmlStopParser(context) }
+            return false
+        }
+        geometryConsumed += 1
+        return true
+    }
+
+    /// Rethrows the budget breach with priority over the parser state —
+    /// xmlStopParser makes libxml2 report an error, which must not be
+    /// mistaken for malformed XML. A depth breach IS reported as malformed:
+    /// kilometer-deep nesting is structural garbage, not a big model.
+    private func checkBudget() throws {
+        if exceededBudget {
+            throw ThreeMFParseError.overGeometryBudget(budget: geometryBudget ?? 0)
+        }
     }
 
     deinit {
@@ -150,12 +190,14 @@ final class ModelPartSAXParser {
                 context, buffer.bindMemory(to: CChar.self).baseAddress,
                 Int32(buffer.count), 0)
         }
+        try checkBudget()
         guard rc == 0 else { throw ThreeMFParseError.malformedModelXML(partPath: part.partPath) }
     }
 
     func finish() throws -> ModelPart {
         if context == nil { try start(firstChunk: Data()) }
         let rc = xmlParseChunk(context, nil, 0, 1)
+        try checkBudget()
         guard rc == 0, context!.pointee.wellFormed != 0 else {
             throw ThreeMFParseError.malformedModelXML(partPath: part.partPath)
         }
@@ -185,6 +227,7 @@ final class ModelPartSAXParser {
                     self.context, buffer.bindMemory(to: CChar.self).baseAddress,
                     Int32(buffer.count), 0)
             }
+            try checkBudget()
             guard rc == 0 else { throw ThreeMFParseError.malformedModelXML(partPath: part.partPath) }
         }
     }
@@ -200,6 +243,13 @@ final class ModelPartSAXParser {
         attributes: UnsafeMutablePointer<UnsafePointer<xmlChar>?>?,
         count: Int
     ) {
+        guard stack.count < Self.maxElementDepth else {
+            if !exceededDepth {
+                exceededDepth = true
+                if let context { xmlStopParser(context) }
+            }
+            return
+        }
         let attrs = SAXAttributes(base: attributes, count: count)
         switch stack.last {
         case nil:
@@ -256,7 +306,7 @@ final class ModelPartSAXParser {
                 stack.append(.skip)
             }
         case .vertices:
-            if matches(name, "vertex") {
+            if matches(name, "vertex"), consumeGeometry() {
                 let x = attrs.float("x") ?? 0
                 let y = attrs.float("y") ?? 0
                 let z = attrs.float("z") ?? 0
@@ -264,7 +314,7 @@ final class ModelPartSAXParser {
             }
             stack.append(.skip)
         case .triangles:
-            if matches(name, "triangle") {
+            if matches(name, "triangle"), consumeGeometry() {
                 appendTriangle(attrs)
             }
             stack.append(.skip)
@@ -304,7 +354,9 @@ final class ModelPartSAXParser {
     }
 
     private func endElement() {
-        guard let popped = stack.popLast() else { return }
+        // Past the depth cap the parse is doomed (feed/finish will throw);
+        // popping for skipped starts would only corrupt the pairing.
+        guard !exceededDepth, let popped = stack.popLast() else { return }
         switch popped {
         case .object:
             if let object = currentObject {
