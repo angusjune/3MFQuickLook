@@ -66,7 +66,9 @@ extension PlateFilmstrip.Cell {
     /// View members are `@MainActor` (the swift-testing trap) and cell
     /// building is pure model work.
     init(plate: Plate) {
-        self.init(plate: plate, thumbnail: plate.thumbnailData.flatMap(NSImage.init(data:)))
+        self.init(
+            plate: plate,
+            thumbnail: plate.thumbnailData.flatMap(PackageImageDecoder.nsImage(from:)))
     }
 }
 

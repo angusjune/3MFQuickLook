@@ -24,7 +24,11 @@ final class ThumbnailProvider: QLThumbnailProvider {
             do {
                 // Embedded-first (issue #5): the file's own Embedded Thumbnail
                 // wins when present — no geometry parse, no offscreen render.
-                if let thumbnail = try? ThreeMFParser().embeddedThumbnail(fileAt: fileURL),
+                // Everything here runs under the Geometry Budget and zip-bomb
+                // caps (issue #10): this extension parses untrusted downloads
+                // automatically inside a hard memory ceiling.
+                if let thumbnail = try? ThreeMFParser(limits: .quickLookExtension)
+                    .embeddedThumbnail(fileAt: fileURL),
                    let reply = Self.embeddedReply(from: thumbnail.data, maximumSize: size) {
                     logger.info("embedded thumbnail for \(fileURL.lastPathComponent, privacy: .public)")
                     handler(reply, nil)
@@ -36,7 +40,7 @@ final class ThumbnailProvider: QLThumbnailProvider {
                 // show and no geometry to render (stripped by definition) —
                 // the generic icon is the honest fallback, never an empty
                 // scene.
-                let document = try ThreeMFParser().parse(fileAt: fileURL)
+                let document = try ThreeMFParser(limits: .quickLookExtension).parse(fileAt: fileURL)
                 guard !document.isSlicedFile else {
                     logger.info("sliced file without plate image: \(fileURL.lastPathComponent, privacy: .public)")
                     handler(nil, nil)
@@ -52,6 +56,13 @@ final class ThumbnailProvider: QLThumbnailProvider {
                     context.draw(image, in: CGRect(origin: .zero, size: size))
                     return true
                 }, nil)
+            } catch ThreeMFParseError.overGeometryBudget(let budget) {
+                // Over the Geometry Budget with no Embedded Thumbnail to
+                // show: the generic icon is the honest, jetsam-safe answer —
+                // same posture as a Sliced File without a Plate image.
+                logger.info(
+                    "over geometry budget (\(budget, privacy: .public)) for \(fileURL.lastPathComponent, privacy: .public)")
+                handler(nil, nil)
             } catch {
                 logger.error("thumbnail failed for \(fileURL.lastPathComponent, privacy: .public): \(error, privacy: .public)")
                 handler(nil, error)
@@ -61,12 +72,10 @@ final class ThumbnailProvider: QLThumbnailProvider {
 
     /// A thumbnail reply that draws the Embedded Thumbnail image, aspect-fit
     /// within `maximumSize` so Finder shows it at its true proportions. Returns
-    /// nil when the bytes don't decode as an image, so the caller falls back to
-    /// mesh rendering.
+    /// nil when the bytes don't decode as an image — or declare bomb-sized
+    /// dimensions (issue #10) — so the caller falls back to mesh rendering.
     private static func embeddedReply(from data: Data, maximumSize: CGSize) -> QLThumbnailReply? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
-        else { return nil }
+        guard let image = PackageImageDecoder.cgImage(from: data) else { return nil }
 
         let imageSize = CGSize(width: image.width, height: image.height)
         guard imageSize.width > 0, imageSize.height > 0 else { return nil }
