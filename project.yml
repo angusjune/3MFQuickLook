@@ -34,7 +34,16 @@ targets:
   ThreeMFQuickLook:
     type: application
     platform: macOS
-    sources: [App]
+    sources:
+      - App
+      # Sparkle and ZIPFoundation are MIT-family: their notices must ship "in
+      # all copies", which means inside the distributed app, not just in the
+      # repo. Regenerate with scripts/collect_licenses.sh after bumping a
+      # dependency.
+      - path: THIRD-PARTY-LICENSES.md
+        buildPhase: resources
+      - path: LICENSE
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: 3MF QuickLook

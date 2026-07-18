@@ -160,6 +160,22 @@ appiconset, whose filenames already follow the `.iconset` convention.
 Icon coordinates in `dmg_settings.py` and the backdrop drawn by
 `generate_art.swift` must stay in sync — they are two halves of one layout.
 
+## Third-party attribution
+
+Sparkle and ZIPFoundation are MIT-family licenses requiring their copyright
+notice to ship "in all copies or substantial portions" — an obligation that
+attaches to the distributed DMG, not just to the source. `THIRD-PARTY-LICENSES.md`
+reproduces both texts verbatim and is bundled into
+`Contents/Resources/THIRD-PARTY-LICENSES.md` (wired up in `project.yml`), so
+the notices travel with the binary.
+
+**After bumping or adding any package**, re-run `scripts/collect_licenses.sh`
+and commit the result; `--check` exits non-zero when the file is stale. The
+script reads the resolved SPM checkouts under `build/SourcePackages`, so build
+once first. It fails rather than skipping when a dependency has no
+discoverable license file — adding a package cannot silently ship it
+unattributed.
+
 ## Odds and ends
 
 - **Re-running a failed release** is safe: `update_appcast.py` refuses
