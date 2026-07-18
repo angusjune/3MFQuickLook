@@ -59,8 +59,7 @@ The workflow fails fast, before building, if this secret is missing.
 
 ## Before the repository goes public
 
-- [ ] Add a LICENSE (ADR-0003 says permissive; the exact license is an owner
-      decision this pipeline doesn't make).
+- [x] Add a LICENSE (ADR-0003 says permissive) — MIT, in `LICENSE`.
 - [x] Set the `SPARKLE_PRIVATE_KEY` secret and `SUPublicEDKey` (above) — both
       done.
 
