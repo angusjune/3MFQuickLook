@@ -84,6 +84,10 @@ if [[ -z "$BUILD_NUMBER" ]]; then
     BUILD_NUMBER="$(git -C "$REPO_ROOT" rev-list --count HEAD)"
 fi
 command -v xcodegen > /dev/null || die "xcodegen is required (brew install xcodegen)"
+# Hard requirement rather than a fallback to plain hdiutil: a silent degrade
+# would ship an unstyled DMG from CI whenever the install step broke.
+command -v dmgbuild > /dev/null \
+    || die "dmgbuild is required to lay out the DMG window (python3 -m pip install dmgbuild)"
 
 if [[ "$UNSIGNED" -eq 1 ]]; then
     # Fail fast, before a multi-minute build, if Sparkle updates could never
@@ -224,12 +228,29 @@ elif [[ "$DRY_RUN" -eq 0 ]]; then
 fi
 
 log "Building the DMG"
-STAGING_DIR="$OUTPUT_DIR/dmg-root"
-mkdir -p "$STAGING_DIR"
-ditto "$APP_PATH" "$STAGING_DIR/$APP_NAME.app"
-ln -s /Applications "$STAGING_DIR/Applications"
+# Multi-resolution TIFF so the window backdrop stays sharp on Retina displays.
+# -cathidpicheck requires the second image to be exactly 2x the first.
+BACKGROUND_TIFF="$OUTPUT_DIR/dmg-background.tiff"
+tiffutil -cathidpicheck \
+    "$REPO_ROOT/packaging/dmg-background.png" \
+    "$REPO_ROOT/packaging/dmg-background@2x.png" \
+    -out "$BACKGROUND_TIFF" > /dev/null
+
+# The appiconset filenames already follow the .iconset convention, so the
+# volume icon comes straight from the app icon with no separate artwork.
+ICONSET_DIR="$OUTPUT_DIR/AppIcon.iconset"
+mkdir -p "$ICONSET_DIR"
+cp "$REPO_ROOT"/App/Assets.xcassets/AppIcon.appiconset/*.png "$ICONSET_DIR/"
+VOLUME_ICON="$OUTPUT_DIR/AppIcon.icns"
+iconutil --convert icns "$ICONSET_DIR" --output "$VOLUME_ICON"
+
 DMG_PATH="$OUTPUT_DIR/$ARTIFACT_BASENAME-$VERSION.dmg"
-hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
+rm -f "$DMG_PATH"
+dmgbuild -s "$REPO_ROOT/packaging/dmg_settings.py" \
+    -D app="$APP_PATH" \
+    -D background="$BACKGROUND_TIFF" \
+    -D volume_icon="$VOLUME_ICON" \
+    "$APP_NAME" "$DMG_PATH"
 
 if [[ "$DRY_RUN" -eq 0 && "$UNSIGNED" -eq 0 ]]; then
     log "Signing, notarizing, and stapling the DMG"

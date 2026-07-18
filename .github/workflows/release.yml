@@ -61,6 +61,14 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Install dmgbuild
+        # A venv rather than `pip install`: the runner's Python is
+        # externally managed (PEP 668), so a bare install can fail outright.
+        run: |
+          python3 -m venv "$RUNNER_TEMP/dmgbuild-venv"
+          "$RUNNER_TEMP/dmgbuild-venv/bin/pip" install --quiet dmgbuild
+          echo "$RUNNER_TEMP/dmgbuild-venv/bin" >> "$GITHUB_PATH"
+
       - name: Build and package (unsigned)
         run: scripts/release.sh --unsigned --version "${GITHUB_REF_NAME#v}"
 

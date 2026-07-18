@@ -39,6 +39,9 @@ targets:
       base:
         PRODUCT_NAME: 3MF QuickLook
         PRODUCT_MODULE_NAME: ThreeMFQuickLook
+        # App/Assets.xcassets is picked up by the App source directory above.
+        # Regenerate the artwork with `swift scripts/generate_art.swift`.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - package: ThreeMFKit
       - package: ThreeMFViewer

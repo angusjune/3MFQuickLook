@@ -85,8 +85,9 @@ Then press Space on any `.3mf` file in Finder.
 - `Packages/HostAppKit` — Host-App-side logic: Quick Look extension status
   probing (via PluginKit elections), onboarding policy, the bundled sample.
 - `SmokeTests/` — end-to-end thumbnail smoke test.
-- `scripts/`, `.github/workflows/` — the release pipeline
-  ([docs/RELEASING.md](docs/RELEASING.md)).
+- `scripts/`, `packaging/`, `.github/workflows/` — the release pipeline
+  ([docs/RELEASING.md](docs/RELEASING.md)). The app icon and DMG backdrop are
+  drawn by `scripts/generate_art.swift`; the committed PNGs are its output.
 - `appcast.xml` — the Sparkle update feed, appended by the release workflow.
 - `CONTEXT.md` — glossary; `docs/adr/` — architecture decisions.
 
