@@ -34,8 +34,13 @@ Embedded-thumbnail instant first paint lands next
    test with. The app registers only as an *alternate* `.3mf` handler — it
    never takes over your double-click default.
 
-Builds are Developer ID–signed and notarized, so Gatekeeper opens them without
-ceremony. The app keeps itself current via [Sparkle](https://sparkle-project.org)
+Builds are not notarized (no Apple Developer Program membership yet; see
+[docs/adr/0005](docs/adr/0005-unsigned-distribution.md)), so Gatekeeper blocks
+the first launch: double-click the app once, then go to **System Settings →
+Privacy & Security**, scroll down, and click **Open Anyway**. Alternatively,
+before first launch: `xattr -d com.apple.quarantine "/Applications/3MF QuickLook.app"`.
+This is a one-time step — later launches and Sparkle auto-updates are
+unaffected. The app keeps itself current via [Sparkle](https://sparkle-project.org)
 (check manually with **3MF QuickLook → Check for Updates…**).
 
 ### If previews don't show up
@@ -102,7 +107,7 @@ providers.
 
 ### Releasing
 
-Pushing a version tag (`v1.2.3`) produces a signed, notarized, stapled DMG on
+Pushing a version tag (`v1.2.3`) produces an ad-hoc-signed, unnotarized DMG on
 a GitHub Release and publishes the Sparkle appcast entry — see
 [docs/RELEASING.md](docs/RELEASING.md) for the one-time credential setup and
 the release checklist.

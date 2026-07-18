@@ -3,7 +3,12 @@
 # distributable DMG (ADR-0003). Run by .github/workflows/release.yml on every
 # version tag; runnable locally with --dry-run and no credentials.
 #
-#   scripts/release.sh --version 1.0.0 [--build-number N] [--dry-run] [--output-dir DIR]
+# As of ADR-0005, CI actually ships ad-hoc-signed, unnotarized DMGs via
+# --unsigned (no paid Apple Developer Program membership yet); the
+# Developer ID + notarization path below (the no-flag default) is preserved
+# for when that changes — see docs/RELEASING.md.
+#
+#   scripts/release.sh --version 1.0.0 [--build-number N] [--dry-run | --unsigned] [--output-dir DIR]
 #
 #   --version        Marketing version = the tag without the leading "v".
 #   --build-number   CFBundleVersion; what Sparkle compares. Defaults to the
@@ -11,10 +16,18 @@
 #                    CI checks out with full history for this).
 #   --dry-run        Build Release and produce an UNSIGNED DMG. Skips
 #                    codesign/notarytool/stapler/spctl entirely; needs no
-#                    credentials. For pipeline verification only.
+#                    credentials. For pipeline verification only — not a
+#                    real release artifact. Mutually exclusive with --unsigned.
+#   --unsigned       Build Release and produce a REAL, ad-hoc-signed,
+#                    unnotarized DMG (ADR-0005) — this is what CI runs today.
+#                    Skips notarization env preflight and Developer ID
+#                    identity lookup entirely, but still verifies the ad-hoc
+#                    signature with `codesign --verify`. Fails fast, before
+#                    building, if SUPublicEDKey in project.yml is empty.
+#                    Mutually exclusive with --dry-run.
 #   --output-dir     Working/output directory (default: <repo>/dist).
 #
-# Environment (real mode only; see docs/RELEASING.md):
+# Environment (real, Developer ID mode only — no flag; see docs/RELEASING.md):
 #   NOTARY_KEY_ID          App Store Connect API key ID
 #   NOTARY_ISSUER_ID       App Store Connect issuer UUID
 #   NOTARY_KEY_FILE        path to the API key .p8 file
@@ -37,6 +50,7 @@ VERSION=""
 BUILD_NUMBER=""
 OUTPUT_DIR="$REPO_ROOT/dist"
 DRY_RUN=0
+UNSIGNED=0
 
 log() { printf '\n==> %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
@@ -55,10 +69,13 @@ while [[ $# -gt 0 ]]; do
         --build-number) BUILD_NUMBER="${2:?--build-number needs a value}"; shift 2 ;;
         --output-dir) OUTPUT_DIR="${2:?--output-dir needs a value}"; shift 2 ;;
         --dry-run) DRY_RUN=1; shift ;;
+        --unsigned) UNSIGNED=1; shift ;;
         -h|--help) usage 0 ;;
         *) die "unknown argument: $1 (try --help)" ;;
     esac
 done
+
+[[ "$DRY_RUN" -eq 1 && "$UNSIGNED" -eq 1 ]] && die "--dry-run and --unsigned are mutually exclusive"
 
 [[ -n "$VERSION" ]] || die "--version is required (the tag without the leading 'v')"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
@@ -68,10 +85,19 @@ if [[ -z "$BUILD_NUMBER" ]]; then
 fi
 command -v xcodegen > /dev/null || die "xcodegen is required (brew install xcodegen)"
 
+if [[ "$UNSIGNED" -eq 1 ]]; then
+    # Fail fast, before a multi-minute build, if Sparkle updates could never
+    # be verified. (The post-build Info.plist check below is the real guard;
+    # this is just cheap enough to run first.)
+    project_ed_key="$(sed -n 's/^[[:space:]]*SUPublicEDKey:[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$REPO_ROOT/project.yml")"
+    [[ -n "$project_ed_key" ]] \
+        || die "SUPublicEDKey is empty in project.yml — Sparkle could not verify updates. Generate the EdDSA keypair first (docs/RELEASING.md)."
+fi
+
 notary_args=()
 DEVELOPER_ID_IDENTITY="${DEVELOPER_ID_IDENTITY:-}"
 APPLE_TEAM_ID="${APPLE_TEAM_ID:-}"
-if [[ "$DRY_RUN" -eq 0 ]]; then
+if [[ "$DRY_RUN" -eq 0 && "$UNSIGNED" -eq 0 ]]; then
     [[ -n "${NOTARY_KEY_ID:-}" ]] || die "NOTARY_KEY_ID is not set (see docs/RELEASING.md)"
     [[ -n "${NOTARY_ISSUER_ID:-}" ]] || die "NOTARY_ISSUER_ID is not set (see docs/RELEASING.md)"
     [[ -f "${NOTARY_KEY_FILE:-}" ]] || die "NOTARY_KEY_FILE does not point at a .p8 file (see docs/RELEASING.md)"
@@ -117,8 +143,12 @@ version_settings=(
     "CURRENT_PROJECT_VERSION=$BUILD_NUMBER"
 )
 
-if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "[dry-run] Building Release (ad-hoc signed, no notarization)"
+if [[ "$DRY_RUN" -eq 1 || "$UNSIGNED" -eq 1 ]]; then
+    if [[ "$UNSIGNED" -eq 1 ]]; then
+        log "Building Release (ad-hoc signed, unnotarized — ADR-0005)"
+    else
+        log "[dry-run] Building Release (ad-hoc signed, no notarization)"
+    fi
     xcodebuild -project "$REPO_ROOT/ThreeMFQuickLook.xcodeproj" \
         -scheme "$SCHEME" -configuration Release \
         -derivedDataPath "$OUTPUT_DIR/DerivedData" \
@@ -177,7 +207,10 @@ if [[ -z "$ed_key" ]]; then
     fi
 fi
 
-if [[ "$DRY_RUN" -eq 0 ]]; then
+if [[ "$UNSIGNED" -eq 1 ]]; then
+    log "Verifying code signature (ad-hoc)"
+    codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+elif [[ "$DRY_RUN" -eq 0 ]]; then
     log "Verifying code signature"
     codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
@@ -198,7 +231,7 @@ ln -s /Applications "$STAGING_DIR/Applications"
 DMG_PATH="$OUTPUT_DIR/$ARTIFACT_BASENAME-$VERSION.dmg"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
 
-if [[ "$DRY_RUN" -eq 0 ]]; then
+if [[ "$DRY_RUN" -eq 0 && "$UNSIGNED" -eq 0 ]]; then
     log "Signing, notarizing, and stapling the DMG"
     codesign --force --timestamp --sign "$DEVELOPER_ID_IDENTITY" "$DMG_PATH"
     notarize_file "$DMG_PATH"
@@ -217,6 +250,8 @@ ENV
 log "Done"
 if [[ "$DRY_RUN" -eq 1 ]]; then
     printf '  DMG (UNSIGNED, dry run): %s\n' "$DMG_PATH"
+elif [[ "$UNSIGNED" -eq 1 ]]; then
+    printf '  DMG (ad-hoc signed, NOT notarized — ADR-0005): %s\n' "$DMG_PATH"
 else
     printf '  DMG (signed, notarized, stapled): %s\n' "$DMG_PATH"
 fi
