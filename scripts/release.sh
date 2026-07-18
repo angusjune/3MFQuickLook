@@ -261,12 +261,32 @@ if [[ "$DRY_RUN" -eq 0 && "$UNSIGNED" -eq 0 ]]; then
     spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_PATH"
 fi
 
-cat > "$OUTPUT_DIR/release-info.env" <<ENV
-VERSION=$VERSION
-BUILD_NUMBER=$BUILD_NUMBER
-APP_PATH=$APP_PATH
-DMG_PATH=$DMG_PATH
-ENV
+# printf %q, not bare interpolation: PRODUCT_NAME contains a space, so an
+# unquoted APP_PATH=/…/3MF QuickLook.app makes `source` try to execute
+# "QuickLook.app" (exit 127). This file is only ever sourced by CI, so a local
+# run cannot catch that — hence the round-trip check below.
+{
+    printf 'VERSION=%q\n' "$VERSION"
+    printf 'BUILD_NUMBER=%q\n' "$BUILD_NUMBER"
+    printf 'APP_PATH=%q\n' "$APP_PATH"
+    printf 'DMG_PATH=%q\n' "$DMG_PATH"
+} > "$OUTPUT_DIR/release-info.env"
+
+# Prove the file survives `source` exactly as the workflow uses it, and that
+# every value round-trips. Cheap, and it exercises the CI-only code path on
+# every local run. The subshell inherits these expected_* names, then `source`
+# overwrites VERSION/APP_PATH/DMG_PATH inside it only.
+expected_version="$VERSION"
+expected_app_path="$APP_PATH"
+expected_dmg_path="$DMG_PATH"
+(
+    # shellcheck disable=SC1091
+    source "$OUTPUT_DIR/release-info.env"
+    [[ "$VERSION" == "$expected_version" ]] || die "VERSION did not round-trip through release-info.env"
+    [[ "$APP_PATH" == "$expected_app_path" ]] || die "APP_PATH did not round-trip through release-info.env"
+    [[ "$DMG_PATH" == "$expected_dmg_path" ]] || die "DMG_PATH did not round-trip through release-info.env"
+    [[ -f "$DMG_PATH" ]] || die "DMG_PATH from release-info.env does not exist: $DMG_PATH"
+) || die "release-info.env is not safe to source (see above)"
 
 log "Done"
 if [[ "$DRY_RUN" -eq 1 ]]; then
