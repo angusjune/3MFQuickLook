@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="App/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width="128" alt="3MF QuickLook">
+</p>
+
 # 3MF QuickLook
 
 Quick Look previews and Finder thumbnails for `.3mf` files on macOS 15+.
@@ -5,23 +9,28 @@ Press Space on a 3MF file and get an interactive 3D preview; folders of models
 get real thumbnails instead of blank icons.
 
 - **Preview** — Space on any `.3mf` file opens a real 3D view: drag to orbit,
-  scroll or pinch to zoom, secondary-drag to pan.
+  scroll or pinch to zoom, secondary-drag to pan. The preview appears
+  instantly using the thumbnail stored inside the file, then crossfades to the
+  interactive scene once it's built.
 - **Thumbnails** — Finder icons and grid thumbnails are true offscreen renders
   of the model, with the file's own colors.
-- **Slicer Projects** — Bambu Studio / OrcaSlicer projects preview like the
-  slicer: parts in their assigned filament colors on a flat plate hint at the
-  true plate size, showing the first Build Plate that has objects (plate
-  browsing lands with the Plate Filmstrip,
-  [issue #6](https://github.com/angusjune/3MFQuickLook/issues/6)).
-  PrusaSlicer projects preview as Vanilla-plus.
+- **Slicer projects** — Bambu Studio and OrcaSlicer projects preview like the
+  slicer: parts in their assigned filament colors, on a flat plate outline at
+  the true plate size. Every build plate is browsable from the filmstrip.
+  PrusaSlicer projects preview their geometry without filament colors or
+  plates.
+- **Sliced files** — `.gcode.3mf` files preview as the slicer's own plate
+  images alongside their print metadata, rather than as 3D geometry.
+- **Painted models** — multi-color painted models render in their paint
+  colors, approximated per triangle.
+- **Info line** — dimensions, object count, estimated print time, and a dot
+  for each filament in use.
+- **Built for real-world files** — oversized meshes, corrupt archives and zip
+  bombs are detected and reported rather than hanging Finder. Models too
+  detailed to preview inline say so, and open in the app instead.
 - **Host app** — a thin viewer: open a `.3mf` file for the same interactive
   view in a window, with first-run onboarding for enabling the extensions.
   It's not a slicer or an editor.
-
-**Status: pre-release.** Vanilla 3MF and Slicer Project previews are
-end-to-end (core spec plus the materials and production extensions).
-Embedded-thumbnail instant first paint lands next
-([issue #5](https://github.com/angusjune/3MFQuickLook/issues/5)).
 
 ## Install
 
@@ -34,14 +43,13 @@ Embedded-thumbnail instant first paint lands next
    test with. The app registers only as an *alternate* `.3mf` handler — it
    never takes over your double-click default.
 
-Builds are not notarized (no Apple Developer Program membership yet; see
-[docs/adr/0005](docs/adr/0005-unsigned-distribution.md)), so Gatekeeper blocks
-the first launch: double-click the app once, then go to **System Settings →
-Privacy & Security**, scroll down, and click **Open Anyway**. Alternatively,
-before first launch: `xattr -d com.apple.quarantine "/Applications/3MF QuickLook.app"`.
-This is a one-time step — later launches and Sparkle auto-updates are
-unaffected. The app keeps itself current via [Sparkle](https://sparkle-project.org)
-(check manually with **3MF QuickLook → Check for Updates…**).
+Builds are not notarized, so Gatekeeper blocks the first launch: double-click
+the app once, then go to **System Settings → Privacy & Security**, scroll
+down, and click **Open Anyway**. Alternatively, before first launch:
+`xattr -d com.apple.quarantine "/Applications/3MF QuickLook.app"`. This is a
+one-time step — later launches and automatic updates are unaffected. The app
+keeps itself current via [Sparkle](https://sparkle-project.org) (check
+manually with **3MF QuickLook → Check for Updates…**).
 
 ### If previews don't show up
 
@@ -57,8 +65,11 @@ macOS occasionally needs a nudge to route Quick Look to a new extension:
 
 - Select a `.3mf` file in Finder and press **Space**: interactive preview
   (drag = orbit, scroll/pinch = zoom, secondary drag = pan).
+- With a multi-plate slicer project, pick a plate from the filmstrip.
 - Icon and gallery views show rendered thumbnails automatically.
-- Double-click (or "Open With") to view the model in the app window.
+- Double-click (or "Open With") to view the model in the app window. The app
+  has no preview complexity limit, so very detailed models that can't render
+  inline still open here.
 
 ## Building from source
 
@@ -83,13 +94,12 @@ Then press Space on any `.3mf` file in Finder.
 - `Packages/ThreeMFViewer` — scene building and the shared interactive Viewer:
   document → RealityKit entity tree, plus offscreen thumbnail rendering.
 - `Packages/HostAppKit` — Host-App-side logic: Quick Look extension status
-  probing (via PluginKit elections), onboarding policy, the bundled sample.
+  probing, onboarding policy, the bundled sample.
 - `SmokeTests/` — end-to-end thumbnail smoke test.
 - `scripts/`, `packaging/`, `.github/workflows/` — the release pipeline
   ([docs/RELEASING.md](docs/RELEASING.md)). The app icon and DMG backdrop are
   drawn by `scripts/generate_art.swift`; the committed PNGs are its output.
 - `appcast.xml` — the Sparkle update feed, appended by the release workflow.
-- `CONTEXT.md` — glossary; `docs/adr/` — architecture decisions.
 
 ### Tests
 
@@ -108,7 +118,11 @@ providers.
 
 ### Releasing
 
-Pushing a version tag (`v1.2.3`) produces an ad-hoc-signed, unnotarized DMG on
-a GitHub Release and publishes the Sparkle appcast entry — see
-[docs/RELEASING.md](docs/RELEASING.md) for the one-time credential setup and
-the release checklist.
+Pushing a version tag (`v1.2.3`) builds the DMG, attaches it to a GitHub
+Release and publishes the Sparkle appcast entry — see
+[docs/RELEASING.md](docs/RELEASING.md) for the release checklist.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Third-party notices are in
+[THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
