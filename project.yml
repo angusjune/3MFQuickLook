@@ -73,7 +73,7 @@ targets:
         # REQUIRED before the first release: the EdDSA public key printed by
         # Sparkle's `generate_keys` (see docs/RELEASING.md). scripts/release.sh
         # refuses to cut a real release while this is empty.
-        SUPublicEDKey: ""
+        SUPublicEDKey: "Ykp+gzY1PWSpDZ6ZTwzx/uxcS64xaXE9bc8TVbBOtwc="
         # Required for the Preview Extension: Quick Look only consults a
         # preview appex for types its containing app declares as openable
         # document types (walking-skeleton finding — removing this silently
