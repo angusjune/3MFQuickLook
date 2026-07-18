@@ -1,14 +1,12 @@
-# Release pipeline (ADR-0003): pushing a version tag (v1.2.3) builds a
-# Developer ID-signed, notarized, stapled DMG, attaches it to a GitHub
-# Release, and publishes an EdDSA-signed Sparkle appcast entry to main.
+# Release pipeline (ADR-0003, amended by ADR-0005 for unsigned distribution):
+# pushing a version tag (v1.2.3) builds an ad-hoc-signed, unnotarized DMG,
+# attaches it to a GitHub Release, and publishes an EdDSA-signed Sparkle
+# appcast entry to main. There is no paid Apple Developer Program membership,
+# so Developer ID signing and notarization are skipped; Sparkle's EdDSA
+# signature is the sole update trust root (docs/RELEASING.md has the upgrade
+# path back to a signed, notarized pipeline).
 #
-# Required repository secrets (how to produce each: docs/RELEASING.md):
-#   DEVELOPER_ID_CERT_P12       base64 .p12 with the Developer ID Application
-#                               certificate + private key
-#   DEVELOPER_ID_CERT_PASSWORD  password for the .p12
-#   NOTARY_KEY_ID               App Store Connect API key ID
-#   NOTARY_ISSUER_ID            App Store Connect issuer UUID
-#   NOTARY_PRIVATE_KEY          contents of the App Store Connect API .p8 key
+# Required repository secrets (how to produce it: docs/RELEASING.md):
 #   SPARKLE_PRIVATE_KEY         Sparkle EdDSA private key (generate_keys -x)
 
 name: Release
@@ -34,17 +32,10 @@ jobs:
     steps:
       - name: Check required secrets
         env:
-          DEVELOPER_ID_CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
-          DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
-          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
-          NOTARY_PRIVATE_KEY: ${{ secrets.NOTARY_PRIVATE_KEY }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           missing=0
-          for name in DEVELOPER_ID_CERT_P12 DEVELOPER_ID_CERT_PASSWORD \
-                      NOTARY_KEY_ID NOTARY_ISSUER_ID NOTARY_PRIVATE_KEY \
-                      SPARKLE_PRIVATE_KEY; do
+          for name in SPARKLE_PRIVATE_KEY; do
             if [ -z "${!name}" ]; then
               echo "::error::missing repository secret: $name (see docs/RELEASING.md)"
               missing=1
@@ -70,24 +61,8 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Import Developer ID certificate
-        env:
-          DEVELOPER_ID_CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
-          DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
-        run: scripts/ci_keychain.sh setup
-
-      - name: Write notarization API key
-        env:
-          NOTARY_PRIVATE_KEY: ${{ secrets.NOTARY_PRIVATE_KEY }}
-        run: |
-          printf '%s\n' "$NOTARY_PRIVATE_KEY" > "$RUNNER_TEMP/notary-key.p8"
-          echo "NOTARY_KEY_FILE=$RUNNER_TEMP/notary-key.p8" >> "$GITHUB_ENV"
-
-      - name: Build, sign, notarize, staple, package
-        env:
-          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
-        run: scripts/release.sh --version "${GITHUB_REF_NAME#v}"
+      - name: Build and package (unsigned)
+        run: scripts/release.sh --unsigned --version "${GITHUB_REF_NAME#v}"
 
       - name: Sign the update for Sparkle
         env:
@@ -139,7 +114,3 @@ jobs:
           git add appcast.xml
           git commit -m "Publish appcast entry for $GITHUB_REF_NAME"
           git push origin main
-
-      - name: Clean up signing keychain
-        if: always()
-        run: scripts/ci_keychain.sh cleanup
