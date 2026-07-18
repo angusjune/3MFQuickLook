@@ -53,7 +53,13 @@ final class ThumbnailProvider: QLThumbnailProvider {
                 // thread; without it the closure inherits this Task's MainActor
                 // isolation and the runtime kills the appex at draw time.
                 handler(QLThumbnailReply(contextSize: size) { @Sendable context in
-                    context.draw(image, in: CGRect(origin: .zero, size: size))
+                    // Fill the context's own clip box, not a `size`-sized rect:
+                    // the reply context's user space carries the request's
+                    // scale, so a rect measured in points covered only the
+                    // lower-left 1/scale of a Retina context (CG's origin is
+                    // bottom-left) and Finder showed a small, corner-pinned
+                    // render. The clip box is in user space either way.
+                    context.draw(image, in: context.boundingBoxOfClipPath)
                     return true
                 }, nil)
             } catch ThreeMFParseError.overGeometryBudget(let budget) {
@@ -85,7 +91,10 @@ final class ThumbnailProvider: QLThumbnailProvider {
         // CGImage is immutable and thread-safe to read from the drawing block
         // QuickLook invokes on its own thread.
         return QLThumbnailReply(contextSize: contextSize) { @Sendable context in
-            context.draw(image, in: CGRect(origin: .zero, size: contextSize))
+            // Same scale trap as the mesh-render reply above: fill the clip
+            // box. `contextSize` already carries the aspect fit, so filling
+            // it keeps the image's true proportions.
+            context.draw(image, in: context.boundingBoxOfClipPath)
             return true
         }
     }

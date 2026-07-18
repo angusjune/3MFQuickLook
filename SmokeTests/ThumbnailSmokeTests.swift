@@ -91,6 +91,65 @@ import UniformTypeIdentifiers
         #expect(yellow > 100, "base-filament yellow faces missing from the thumbnail")
     }
 
+    /// Regression: the reply's drawing block filled a rect measured in points
+    /// while the reply context's user space carries the request's scale, so a
+    /// scale-2 request drew the render into the lower-left quarter of the
+    /// frame (Core Graphics' origin is bottom-left) and Finder showed a small,
+    /// corner-pinned thumbnail. Asserted per quadrant rather than as a
+    /// bounding box because the bitmap's row order is not part of the
+    /// contract: under the bug three of the four quadrants were empty
+    /// whichever way up the buffer is read.
+    @Test(
+        .timeLimit(.minutes(2)),
+        .enabled(if: FileManager.default.fileExists(atPath: corpusFile.path)))
+    func thumbnailFillsTheWholeFrameAtRetinaScale() async throws {
+        try await Smoke.registerHostApp()
+
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("smoke-fill-\(UUID().uuidString)")
+            .appendingPathExtension("3mf")
+        try FileManager.default.copyItem(at: Self.corpusFile, to: fixture)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+
+        // scale 2 is what triggered the bug: at scale 1 the points-sized rect
+        // happened to cover the whole context, so the fault stayed invisible.
+        let request = QLThumbnailGenerator.Request(
+            fileAt: fixture,
+            size: CGSize(width: 256, height: 256),
+            scale: 2,
+            representationTypes: .thumbnail)
+        request.iconMode = false
+
+        let representation = try await QLThumbnailGenerator.shared
+            .generateBestRepresentation(for: request)
+        let image = representation.cgImage
+        let pixels = rgbaPixels(of: image)
+        try #require(!pixels.isEmpty)
+
+        let width = image.width
+        let height = image.height
+        func drawnFraction(xRange: Range<Int>, yRange: Range<Int>) -> Double {
+            var drawn = 0
+            for y in yRange {
+                for x in xRange where (pixels[y * width + x] >> 24) & 0xFF > 8 {
+                    drawn += 1
+                }
+            }
+            return Double(drawn) / Double(xRange.count * yRange.count)
+        }
+
+        let left = 0..<(width / 2), right = (width / 2)..<width
+        let top = 0..<(height / 2), bottom = (height / 2)..<height
+        for (name, xs, ys) in [
+            ("left/top", left, top), ("right/top", right, top),
+            ("left/bottom", left, bottom), ("right/bottom", right, bottom),
+        ] {
+            #expect(
+                drawnFraction(xRange: xs, yRange: ys) > 0.1,
+                "\(name) quadrant is blank — the render is not filling the thumbnail frame")
+        }
+    }
+
     @Test(.timeLimit(.minutes(2)))
     func quickLookContentTypesResolveAfterHostAppRegistration() async throws {
         try await Smoke.registerHostApp()
