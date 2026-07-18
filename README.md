@@ -8,12 +8,21 @@ Quick Look previews and Finder thumbnails for `.3mf` files on macOS 15+.
 Press Space on a 3MF file and get an interactive 3D preview; folders of models
 get real thumbnails instead of blank icons.
 
+<p align="center">
+  <img src="docs/images/quicklook-preview.png" width="700"
+       alt="The Finder Quick Look panel showing a 3MF model as an interactive 3D scene, on its build plate, with a dimensions and filament info line">
+</p>
+
 - **Preview** — Space on any `.3mf` file opens a real 3D view: drag to orbit,
   scroll or pinch to zoom, secondary-drag to pan. The preview appears
   instantly using the thumbnail stored inside the file, then crossfades to the
   interactive scene once it's built.
 - **Thumbnails** — Finder icons and grid thumbnails are true offscreen renders
   of the model, with the file's own colors.
+
+  <img src="docs/images/finder-thumbnails.png" width="700"
+       alt="A Finder window in icon view showing eight .3mf files, each with a rendered thumbnail of its model">
+
 - **Slicer projects** — Bambu Studio and OrcaSlicer projects preview like the
   slicer: parts in their assigned filament colors, on a flat plate outline at
   the true plate size. Every build plate is browsable from the filmstrip.
@@ -31,6 +40,9 @@ get real thumbnails instead of blank icons.
 - **Host app** — a thin viewer: open a `.3mf` file for the same interactive
   view in a window, with first-run onboarding for enabling the extensions.
   It's not a slicer or an editor.
+
+  <img src="docs/images/host-app.png" width="700"
+       alt="The 3MF QuickLook app window showing a multi-part model on its build plate">
 
 ## Install
 
