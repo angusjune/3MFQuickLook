@@ -5,5 +5,14 @@
     <link>https://raw.githubusercontent.com/angusjune/3MFQuickLook/main/appcast.xml</link>
     <description>Updates for 3MF QuickLook.</description>
     <language>en</language>
+    <item>
+      <title>0.1.0</title>
+      <pubDate>Sat, 18 Jul 2026 07:44:14 GMT</pubDate>
+      <link>https://github.com/angusjune/3MFQuickLook/releases/tag/v0.1.0</link>
+      <sparkle:version>55</sparkle:version>
+      <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/angusjune/3MFQuickLook/releases/download/v0.1.0/3MFQuickLook-0.1.0.dmg" type="application/octet-stream" sparkle:edSignature="dCNmAOCN8Qh3hnST3On0k9KRsJZmHh4+zf5jLvhcoVvGHNNLKJq84+NbNyfwagwFjnuKJ4Qit6aBWqjJ8Hq9Dw==" length="5327890" />
+    </item>
   </channel>
 </rss>
