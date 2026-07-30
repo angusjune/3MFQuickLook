@@ -16,8 +16,11 @@ git push origin v1.0.0
 [`release.yml`](../.github/workflows/release.yml) then builds and ad-hoc-signs
 the app ([`scripts/release.sh --unsigned`](../scripts/release.sh)), attaches
 the DMG to a GitHub Release, EdDSA-signs the DMG with Sparkle's `sign_update`,
-and commits the new appcast entry to `main`
-([`scripts/update_appcast.py`](../scripts/update_appcast.py)).
+commits the new appcast entry to `main`
+([`scripts/update_appcast.py`](../scripts/update_appcast.py)), and updates the
+version and DMG checksum in the
+[`angusjune/homebrew-tap`](https://github.com/angusjune/homebrew-tap) cask
+([`scripts/update_homebrew_cask.py`](../scripts/update_homebrew_cask.py)).
 
 The marketing version is the tag without the leading `v`; the build number
 (`CFBundleVersion`, what Sparkle compares) is the commit count, so it
@@ -49,17 +52,45 @@ already-shipped apps** (they verify updates against the old public key) —
 only do this if the key is compromised, and read Sparkle's key-rotation
 guidance first.
 
+### Homebrew tap deploy key
+
+The release workflow checks out `angusjune/homebrew-tap` with a write-enabled
+SSH deploy key and commits the new cask version and checksum directly to its
+`main` branch. A deploy key is scoped to that repository, so the release job
+does not need a personal access token with access to unrelated repositories.
+
+Generate a dedicated keypair, add its public half to the tap with write access,
+and store its private half as a secret in this repository:
+
+```sh
+ssh-keygen -t ed25519 -N "" \
+  -C "3MFQuickLook release workflow" \
+  -f homebrew-tap-deploy-key
+gh api --method POST repos/angusjune/homebrew-tap/keys \
+  -f title="3MFQuickLook release workflow" \
+  -f key="$(cat homebrew-tap-deploy-key.pub)" \
+  -F read_only=false
+gh secret set HOMEBREW_TAP_DEPLOY_KEY < homebrew-tap-deploy-key
+rm homebrew-tap-deploy-key homebrew-tap-deploy-key.pub
+```
+
+Rotating the deploy key does not affect installed apps. Add the replacement
+public key and update `HOMEBREW_TAP_DEPLOY_KEY` before removing the old key, so
+releases remain uninterrupted.
+
 ### Secrets reference
 
 | Secret | Contents |
 | --- | --- |
+| `HOMEBREW_TAP_DEPLOY_KEY` | Private SSH deploy key with write access to `angusjune/homebrew-tap` |
 | `SPARKLE_PRIVATE_KEY` | Sparkle EdDSA private key (`generate_keys -x`) |
 
-The workflow fails fast, before building, if this secret is missing.
+The workflow fails fast, before building, if either required secret is missing.
 
 ## Before the repository goes public
 
 - [x] Add a LICENSE (ADR-0003 says permissive) — MIT, in `LICENSE`.
+- [x] Add the Homebrew tap deploy key and `HOMEBREW_TAP_DEPLOY_KEY` secret.
 - [x] Set the `SPARKLE_PRIVATE_KEY` secret and `SUPublicEDKey` (above) — both
       done.
 
@@ -83,6 +114,11 @@ for the app. The following need a human and real artifacts:
    release N, then tag release N+1. After the workflow finishes, open the
    installed app and use "3MF QuickLook → Check for Updates…": it should
    find, download, verify, and install N+1 through Sparkle's standard flow.
+4. **Homebrew cask** — after the workflow finishes, run
+   `brew update && brew info --cask angusjune/tap/3mf-quicklook`. The reported
+   version should match the release tag. A fresh
+   `brew install --cask angusjune/tap/3mf-quicklook` should verify the checksum
+   and install the same DMG attached to the release.
 
 ## Upgrading to notarized releases later
 
@@ -189,6 +225,10 @@ unattributed.
 - **Release notes** are auto-generated from PRs/commits by
   `gh release create --generate-notes`; edit the release afterwards if wanted.
   The appcast links to the release page rather than embedding notes.
+- **Homebrew releases are pinned**: the release job computes the SHA-256 from
+  the built DMG and updates the cask only after the GitHub Release and Sparkle
+  appcast have been published. `brew install --cask
+  angusjune/tap/3mf-quicklook` then installs that exact release.
 - **Rotating the Sparkle key** effectively strands shipped apps (they verify
   updates against the old public key) — don't, unless compromised, and then
   read Sparkle's key-rotation guidance first.

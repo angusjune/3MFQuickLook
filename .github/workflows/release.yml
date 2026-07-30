@@ -1,13 +1,15 @@
 # Release pipeline (ADR-0003, amended by ADR-0005 for unsigned distribution):
 # pushing a version tag (v1.2.3) builds an ad-hoc-signed, unnotarized DMG,
-# attaches it to a GitHub Release, and publishes an EdDSA-signed Sparkle
-# appcast entry to main. There is no paid Apple Developer Program membership,
-# so Developer ID signing and notarization are skipped; Sparkle's EdDSA
-# signature is the sole update trust root (docs/RELEASING.md has the upgrade
-# path back to a signed, notarized pipeline).
+# attaches it to a GitHub Release, publishes an EdDSA-signed Sparkle appcast
+# entry to main, and updates the Homebrew cask in angusjune/homebrew-tap.
+# There is no paid Apple Developer Program membership, so Developer ID signing
+# and notarization are skipped; Sparkle's EdDSA signature is the sole update
+# trust root (docs/RELEASING.md has the upgrade path back to a signed,
+# notarized pipeline).
 #
 # Required repository secrets (how to produce it: docs/RELEASING.md):
-#   SPARKLE_PRIVATE_KEY         Sparkle EdDSA private key (generate_keys -x)
+#   SPARKLE_PRIVATE_KEY          Sparkle EdDSA private key (generate_keys -x)
+#   HOMEBREW_TAP_DEPLOY_KEY     Write deploy key for angusjune/homebrew-tap
 
 name: Release
 
@@ -32,10 +34,11 @@ jobs:
     steps:
       - name: Check required secrets
         env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           missing=0
-          for name in SPARKLE_PRIVATE_KEY; do
+          for name in SPARKLE_PRIVATE_KEY HOMEBREW_TAP_DEPLOY_KEY; do
             if [ -z "${!name}" ]; then
               echo "::error::missing repository secret: $name (see docs/RELEASING.md)"
               missing=1
@@ -47,6 +50,9 @@ jobs:
         with:
           # Full history: the build number is the commit count.
           fetch-depth: 0
+
+      - name: Test release helpers
+        run: python3 -m unittest discover -s scripts/tests -p "test_*.py"
 
       - name: Select Xcode 26
         run: |
@@ -121,4 +127,32 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add appcast.xml
           git commit -m "Publish appcast entry for $GITHUB_REF_NAME"
+          git push origin main
+
+      - name: Check out Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: angusjune/homebrew-tap
+          path: homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+
+      - name: Publish Homebrew cask
+        run: |
+          # shellcheck disable=SC1091
+          source dist/release-info.env
+          python3 scripts/update_homebrew_cask.py \
+            --cask homebrew-tap/Casks/3mf-quicklook.rb \
+            --version "$VERSION" \
+            --artifact "$DMG_PATH"
+
+          cd homebrew-tap
+          if git diff --quiet -- Casks/3mf-quicklook.rb; then
+            echo "3mf-quicklook cask is already current for $VERSION"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/3mf-quicklook.rb
+          git commit -m "chore: bump 3mf-quicklook to $VERSION"
           git push origin main
