@@ -46,6 +46,14 @@ get real thumbnails instead of blank icons.
 
 ## Install
 
+With Homebrew:
+
+```sh
+brew install --cask angusjune/tap/3mf-quicklook
+```
+
+Or install manually:
+
 1. Download the latest `3MFQuickLook-<version>.dmg` from
    [Releases](https://github.com/angusjune/3MFQuickLook/releases).
 2. Open it and drag **3MF QuickLook** to Applications.
