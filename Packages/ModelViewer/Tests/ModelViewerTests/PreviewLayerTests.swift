@@ -1,3 +1,4 @@
+import GLBKit
 import Testing
 import ThreeMFKit
 @testable import ModelViewer
@@ -9,7 +10,7 @@ import ThreeMFKit
 /// (regression: overlapped thumbnail and geometry on slicer projects with
 /// transparent plate thumbnails).
 @Suite struct PreviewLayerTests {
-    private static let document = ThreeMFDocument()
+    private static let document = ModelDocument.threeMF(ThreeMFDocument())
 
     @Test func loadedShowsOnlyTheViewerEvenWithAStaticImage() {
         #expect(
@@ -79,14 +80,34 @@ import ThreeMFKit
     @Test func loadedSlicedFileShowsTheSlicedLayerWithAStaticImage() {
         let document = ThreeMFDocument(isSlicedFile: true)
         #expect(
-            PreviewView.layer(for: .loaded(document), hasStaticImage: true)
+            PreviewView.layer(for: .loaded(.threeMF(document)), hasStaticImage: true)
                 == .slicedFile(document))
     }
 
     @Test func loadedSlicedFileShowsTheSlicedLayerWithoutAStaticImage() {
         let document = ThreeMFDocument(isSlicedFile: true)
         #expect(
-            PreviewView.layer(for: .loaded(document), hasStaticImage: false)
+            PreviewView.layer(for: .loaded(.threeMF(document)), hasStaticImage: false)
                 == .slicedFile(document))
+    }
+
+    // GLB files take the same handoff, minus the two 3MF-only outcomes:
+    // there is no Embedded Thumbnail to hold, and no Sliced File to route
+    // around the 3D viewer.
+
+    @Test func loadedGLBShowsTheViewer() {
+        let document = ModelDocument.glb(GLBDocument())
+        #expect(
+            PreviewView.layer(for: .loaded(document), hasStaticImage: false)
+                == .viewer(document))
+    }
+
+    @Test func glbOverGeometryBudgetErrorBecomesTheOverBudgetPhase() {
+        let error = GLBParseError.overGeometryBudget(budget: 4_000_000)
+        #expect(PreviewView.failurePhase(for: error) == .overBudget)
+    }
+
+    @Test func glbParseErrorsBecomeTheFailedPhase() {
+        #expect(PreviewView.failurePhase(for: GLBParseError.notBinaryGLTF) == .failed)
     }
 }

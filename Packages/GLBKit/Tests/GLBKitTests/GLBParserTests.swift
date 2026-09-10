@@ -278,3 +278,44 @@ extension Data {
         Swift.withUnsafeBytes(of: value.bitPattern.littleEndian) { append(contentsOf: $0) }
     }
 }
+
+/// Face culling and alpha handling: the two material facts that decide
+/// whether an asset renders as it was authored or as a solid block.
+@Suite struct GLBMaterialModeTests {
+    @Test func defaultsToSingleSidedOpaque() throws {
+        let document = try GLBParser().parse(data: GLBBuilder.triangle(
+            primitive: ["material": 0], extraJSON: ["materials": [["name": "Plain"]]]))
+        #expect(document.materials[0].isDoubleSided == false)
+        #expect(document.materials[0].alphaMode == .opaque)
+    }
+
+    @Test func readsDoubleSidedAndCutoutMaterials() throws {
+        let document = try GLBParser().parse(data: GLBBuilder.triangle(
+            primitive: ["material": 0],
+            extraJSON: [
+                "materials": [[
+                    "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.25,
+                ]]
+            ]))
+        #expect(document.materials[0].isDoubleSided)
+        #expect(document.materials[0].alphaMode == .mask(cutoff: 0.25))
+    }
+
+    @Test func cutoutWithoutAThresholdUsesTheSpecDefault() throws {
+        let document = try GLBParser().parse(data: GLBBuilder.triangle(
+            primitive: ["material": 0], extraJSON: ["materials": [["alphaMode": "MASK"]]]))
+        #expect(document.materials[0].alphaMode == .mask(cutoff: 0.5))
+    }
+
+    @Test func blendModeIsCarried() throws {
+        let document = try GLBParser().parse(data: GLBBuilder.triangle(
+            primitive: ["material": 0], extraJSON: ["materials": [["alphaMode": "BLEND"]]]))
+        #expect(document.materials[0].alphaMode == .blend)
+    }
+
+    @Test func unknownAlphaModeFallsBackToOpaque() throws {
+        let document = try GLBParser().parse(data: GLBBuilder.triangle(
+            primitive: ["material": 0], extraJSON: ["materials": [["alphaMode": "WOBBLY"]]]))
+        #expect(document.materials[0].alphaMode == .opaque)
+    }
+}

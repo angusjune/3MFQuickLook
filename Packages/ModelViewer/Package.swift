@@ -8,10 +8,11 @@ let package = Package(
         .library(name: "ModelViewer", targets: ["ModelViewer"])
     ],
     dependencies: [
-        .package(path: "../ThreeMFKit")
+        .package(path: "../ThreeMFKit"),
+        .package(path: "../GLBKit"),
     ],
     targets: [
-        .target(name: "ModelViewer", dependencies: ["ThreeMFKit"]),
+        .target(name: "ModelViewer", dependencies: ["ThreeMFKit", "GLBKit"]),
         .testTarget(name: "ModelViewerTests", dependencies: ["ModelViewer"]),
     ]
 )

@@ -39,7 +39,9 @@ struct GLTFMaterialResolver {
                 baseColor: color(from: pbr?.baseColorFactor),
                 baseColorImageIndex: imageIndex,
                 metallic: pbr?.metallicFactor ?? 1,
-                roughness: pbr?.roughnessFactor ?? 1)
+                roughness: pbr?.roughnessFactor ?? 1,
+                isDoubleSided: material.doubleSided ?? false,
+                alphaMode: Self.alphaMode(of: material))
         }
         return (materials, images)
     }
@@ -90,6 +92,17 @@ struct GLTFMaterialResolver {
     private func fits(_ byteCount: Int, carried: Int) -> Bool {
         guard let maxTextureBytes = limits.maxTextureBytes else { return true }
         return carried + byteCount <= maxTextureBytes
+    }
+
+    /// An unrecognized `alphaMode` falls back to the spec's default rather
+    /// than failing: the file is telling us something we don't understand
+    /// about transparency, not lying about its geometry.
+    private static func alphaMode(of material: GLTFJSON.Material) -> GLBAlphaMode {
+        switch material.alphaMode {
+        case "MASK": .mask(cutoff: material.alphaCutoff ?? 0.5)
+        case "BLEND": .blend
+        default: .opaque
+        }
     }
 
     private func color(from factor: [Float]?) -> GLBColor {

@@ -2,7 +2,6 @@ import AppKit
 import OSLog
 import Quartz
 import SwiftUI
-import ThreeMFKit
 import ModelViewer
 
 private let logger = Logger(
@@ -23,13 +22,14 @@ final class PreviewViewController: NSViewController, @preconcurrency QLPreviewin
         let start = ContinuousClock.now
 
         // The extension parses untrusted downloads automatically, so both
-        // reads run under the Geometry Budget and zip-bomb caps (issue #10);
-        // the image decode is capped the same way.
-        let image = (try? ThreeMFParser(limits: .quickLookExtension).embeddedThumbnail(fileAt: url))
-            .flatMap { PackageImageDecoder.nsImage(from: $0.data) }
+        // reads run under the Geometry Budget and the bomb caps (issue #10);
+        // the image decode is capped the same way. A GLB has no Embedded
+        // Thumbnail to find — glTF has no thumbnail convention — so it goes
+        // straight to the loading state and then the 3D scene.
+        let image = ModelLoader.embeddedImage(fileAt: url, policy: .quickLookExtension)
 
         let rootView = PreviewView(staticImage: image) {
-            try ThreeMFParser(limits: .quickLookExtension).parse(fileAt: url)
+            try ModelLoader.load(fileAt: url, policy: .quickLookExtension)
         }
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = view.bounds

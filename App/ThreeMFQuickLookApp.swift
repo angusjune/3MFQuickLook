@@ -9,7 +9,7 @@ struct ThreeMFQuickLookApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        DocumentGroup(viewing: ThreeMFFileDocument.self) { file in
+        DocumentGroup(viewing: ModelFileDocument.self) { file in
             DocumentView(data: file.document.data)
         }
         .commands {

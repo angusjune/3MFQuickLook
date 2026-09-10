@@ -1,4 +1,5 @@
 import AppKit
+import GLBKit
 import SwiftUI
 import ThreeMFKit
 
@@ -10,15 +11,18 @@ import ThreeMFKit
 /// ``SlicedFileView`` instead — Plate Thumbnails and print metadata, never
 /// a 3D scene (issue #8).
 ///
-/// Shared by the Preview Extension and the Host App: both hand it a
-/// pre-extracted static image and a parse closure.
+/// Shared by the Preview Extension and the Host App, and by both formats:
+/// each surface hands it a pre-extracted static image and a parse closure,
+/// and the closure decides which format it is reading. GLB files simply
+/// never have a static image — glTF has no thumbnail convention — so they
+/// take the neutral loading state on the way to the 3D scene.
 public struct PreviewView: View {
     private let staticImage: NSImage?
-    private let parse: @Sendable () throws -> ThreeMFDocument
+    private let parse: @Sendable () throws -> ModelDocument
 
     enum Phase: Equatable {
         case loading
-        case loaded(ThreeMFDocument)
+        case loaded(ModelDocument)
         case failed
         /// The package's geometry exceeds the Geometry Budget (issue #10):
         /// the preview never attempts 3D and points at the Host App instead.
@@ -33,7 +37,7 @@ public struct PreviewView: View {
     ///   - parse: builds the document; run off the main thread by this view.
     public init(
         staticImage: NSImage?,
-        parse: @escaping @Sendable () throws -> ThreeMFDocument
+        parse: @escaping @Sendable () throws -> ModelDocument
     ) {
         self.staticImage = staticImage
         self.parse = parse
@@ -100,7 +104,8 @@ public struct PreviewView: View {
     /// static fallback.
     static func layer(for phase: Phase, hasStaticImage: Bool) -> Layer {
         switch phase {
-        case .loaded(let document) where document.isSlicedFile: .slicedFile(document)
+        case .loaded(.threeMF(let document)) where document.isSlicedFile:
+            .slicedFile(document)
         case .loaded(let document): .viewer(document)
         case .loading where hasStaticImage: .staticImage(sceneIsLoading: true)
         case .loading: .loading
@@ -112,10 +117,11 @@ public struct PreviewView: View {
 
     /// The phase a parse failure lands in: only the Geometry Budget breach
     /// earns the over-budget hint — the file is fine, it is just too big for
-    /// the extension. Everything else is an honest failure.
+    /// the extension. Everything else is an honest failure. Both parsers
+    /// report the budget in their own error type; both mean the same thing
+    /// here.
     static func failurePhase(for error: Error) -> Phase {
-        if case ThreeMFParseError.overGeometryBudget = error { return .overBudget }
-        return .failed
+        ModelLoader.isOverGeometryBudget(error) ? .overBudget : .failed
     }
 
     enum Layer: Equatable {
@@ -124,7 +130,7 @@ public struct PreviewView: View {
         case staticImage(sceneIsLoading: Bool)
         case loading
         case failure
-        case viewer(ThreeMFDocument)
+        case viewer(ModelDocument)
         /// Sliced Files never reach the 3D viewer — their honest preview is
         /// the Plate Thumbnails plus print metadata.
         case slicedFile(ThreeMFDocument)
@@ -143,7 +149,7 @@ public struct PreviewView: View {
         ContentUnavailableView {
             Label("Can’t Read This File", systemImage: "cube.transparent")
         } description: {
-            Text("This 3MF file couldn’t be opened.")
+            Text("This file couldn’t be opened.")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

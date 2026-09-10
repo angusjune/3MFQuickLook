@@ -2,7 +2,6 @@ import AppKit
 import ImageIO
 import OSLog
 import QuickLookThumbnailing
-import ThreeMFKit
 import ModelViewer
 
 private let logger = Logger(
@@ -24,12 +23,13 @@ final class ThumbnailProvider: QLThumbnailProvider {
             do {
                 // Embedded-first (issue #5): the file's own Embedded Thumbnail
                 // wins when present — no geometry parse, no offscreen render.
-                // Everything here runs under the Geometry Budget and zip-bomb
+                // Everything here runs under the Geometry Budget and the bomb
                 // caps (issue #10): this extension parses untrusted downloads
-                // automatically inside a hard memory ceiling.
-                if let thumbnail = try? ThreeMFParser(limits: .quickLookExtension)
-                    .embeddedThumbnail(fileAt: fileURL),
-                   let reply = Self.embeddedReply(from: thumbnail.data, maximumSize: size) {
+                // automatically inside a hard memory ceiling. GLB files never
+                // carry one, so they always take the render path below.
+                if let thumbnail = ModelLoader.embeddedThumbnailData(
+                       fileAt: fileURL, policy: .quickLookExtension),
+                   let reply = Self.embeddedReply(from: thumbnail, maximumSize: size) {
                     logger.info("embedded thumbnail for \(fileURL.lastPathComponent, privacy: .public)")
                     handler(reply, nil)
                     return
@@ -40,7 +40,8 @@ final class ThumbnailProvider: QLThumbnailProvider {
                 // show and no geometry to render (stripped by definition) —
                 // the generic icon is the honest fallback, never an empty
                 // scene.
-                let document = try ThreeMFParser(limits: .quickLookExtension).parse(fileAt: fileURL)
+                let document = try ModelLoader.load(
+                    fileAt: fileURL, policy: .quickLookExtension)
                 guard !document.isSlicedFile else {
                     logger.info("sliced file without plate image: \(fileURL.lastPathComponent, privacy: .public)")
                     handler(nil, nil)
@@ -62,12 +63,12 @@ final class ThumbnailProvider: QLThumbnailProvider {
                     context.draw(image, in: context.boundingBoxOfClipPath)
                     return true
                 }, nil)
-            } catch ThreeMFParseError.overGeometryBudget(let budget) {
+            } catch where ModelLoader.isOverGeometryBudget(error) {
                 // Over the Geometry Budget with no Embedded Thumbnail to
                 // show: the generic icon is the honest, jetsam-safe answer —
                 // same posture as a Sliced File without a Plate image.
                 logger.info(
-                    "over geometry budget (\(budget, privacy: .public)) for \(fileURL.lastPathComponent, privacy: .public)")
+                    "over geometry budget for \(fileURL.lastPathComponent, privacy: .public)")
                 handler(nil, nil)
             } catch {
                 logger.error("thumbnail failed for \(fileURL.lastPathComponent, privacy: .public): \(error, privacy: .public)")

@@ -148,23 +148,46 @@ public struct GLBMaterial: Equatable, Sendable {
     public var baseColorImageIndex: Int?
     public var metallic: Float
     public var roughness: Float
+    /// Whether back faces are drawn. glTF's default is false — cull them —
+    /// but assets built as thin shells (foliage, cloth, low-poly scenery)
+    /// routinely set it, and rendering those single-sided punches holes
+    /// straight through the model.
+    public var isDoubleSided: Bool
+    /// How the base color's alpha is treated. Cutout materials are the ones
+    /// that matter for a preview: rendered opaque, a hair card or a leaf
+    /// plane shows as a solid rectangle.
+    public var alphaMode: GLBAlphaMode
 
     public init(
         name: String? = nil,
         baseColor: GLBColor = .white,
         baseColorImageIndex: Int? = nil,
         metallic: Float = 1,
-        roughness: Float = 1
+        roughness: Float = 1,
+        isDoubleSided: Bool = false,
+        alphaMode: GLBAlphaMode = .opaque
     ) {
         self.name = name
         self.baseColor = baseColor
         self.baseColorImageIndex = baseColorImageIndex
         self.metallic = metallic
         self.roughness = roughness
+        self.isDoubleSided = isDoubleSided
+        self.alphaMode = alphaMode
     }
 
     /// The glTF default material, for primitives that reference none.
     public static let `default` = GLBMaterial()
+}
+
+/// How a material's base-color alpha is interpreted (glTF `alphaMode`).
+public enum GLBAlphaMode: Equatable, Sendable {
+    /// Alpha is ignored; the material is fully opaque.
+    case opaque
+    /// Alpha below `cutoff` is discarded, everything else is opaque.
+    case mask(cutoff: Float)
+    /// Alpha composites the material over what is behind it.
+    case blend
 }
 
 /// Encoded image bytes for a base-color texture, exactly as the file stores

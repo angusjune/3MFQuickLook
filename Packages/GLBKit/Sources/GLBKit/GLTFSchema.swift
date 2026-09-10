@@ -93,6 +93,10 @@ struct GLTFJSON: Decodable {
         var name: String?
         var pbrMetallicRoughness: PBRMetallicRoughness?
         var doubleSided: Bool?
+        /// "OPAQUE" (the default), "MASK", or "BLEND".
+        var alphaMode: String?
+        /// The MASK threshold; 0.5 when absent.
+        var alphaCutoff: Float?
     }
 
     struct PBRMetallicRoughness: Decodable {

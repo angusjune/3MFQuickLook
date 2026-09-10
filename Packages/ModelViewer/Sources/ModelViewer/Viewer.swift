@@ -13,9 +13,10 @@ let viewerLogger = Logger(subsystem: "com.angusjune.ModelViewer", category: "vie
 /// bottom (issue #6); clicking a Plate swaps the scene to that Plate's
 /// objects from the already-parsed document — the file is never re-read.
 /// Beneath it sits the Info Line (issue #7), describing whichever scene is
-/// staged.
+/// staged. A GLB has no plates, so it gets the same camera and the same
+/// Info Line with no Filmstrip above it.
 public struct Viewer: View {
-    private let document: ThreeMFDocument
+    private let document: ModelDocument
     private let filmstripCells: [PlateFilmstrip.Cell]
 
     @State private var scene: Entity
@@ -24,9 +25,10 @@ public struct Viewer: View {
     @State private var infoContent: InfoLineContent
 
     @MainActor
-    public init(document: ThreeMFDocument) {
+    public init(document: ModelDocument) {
         self.document = document
-        self.filmstripCells = PlateFilmstrip.plates(of: document).map {
+        // Plates are a Slicer Project concept; every other file has none.
+        self.filmstripCells = (document.threeMF.map(PlateFilmstrip.plates(of:)) ?? []).map {
             PlateFilmstrip.Cell(plate: $0)
         }
         let scene = SceneBuilder.makeScene(for: document)
@@ -34,7 +36,8 @@ public struct Viewer: View {
         var rig = CameraRig()
         rig.frame(SceneBuilder.modelBounds(of: scene))
         _rig = State(initialValue: rig)
-        _selectedPlateIndex = State(initialValue: document.slicerProject?.defaultPlateIndex)
+        _selectedPlateIndex = State(
+            initialValue: document.threeMF?.slicerProject?.defaultPlateIndex)
         // Nil plate = the default scene, the same one makeScene just staged.
         _infoContent = State(initialValue: InfoLineContent(for: document, plate: nil))
     }

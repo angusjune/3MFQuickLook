@@ -6,10 +6,21 @@ import ThreeMFKit
 /// Builds the RealityKit entity tree the Viewer and the Thumbnail Extension
 /// render for a document: real mesh geometry with computed normals and
 /// file colors, under an Apple-minimal backdrop with soft studio lighting
-/// and a shadow-casting key light.
+/// and a shadow-casting key light (``SceneStaging``).
+///
+/// The 3MF path lives here; the GLB path lives in ``GLBSceneBuilder``, and
+/// ``makeScene(for:plate:)`` over a ``ModelDocument`` is the seam every
+/// surface actually calls.
 public enum SceneBuilder {
-    /// Neutral filament gray for geometry the file doesn't color.
-    static let neutralColor = NSColor(srgbRed: 0.82, green: 0.82, blue: 0.84, alpha: 1)
+    /// The scene for any model file. The Plate argument only means something
+    /// for a Slicer Project; GLB has no plates to switch between.
+    @MainActor
+    public static func makeScene(for document: ModelDocument, plate: Plate? = nil) -> Entity {
+        switch document {
+        case .threeMF(let document): makeScene(for: document, plate: plate)
+        case .glb(let document): GLBSceneBuilder.makeScene(for: document)
+        }
+    }
 
     /// - Parameter plate: the Build Plate to stage, or nil for the default —
     ///   a Slicer Project's first Plate with objects, a Vanilla file's whole
@@ -22,26 +33,22 @@ public enum SceneBuilder {
 
         let model = makeModelSubtree(for: document, plate: plate)
         root.addChild(model)
-        root.addChild(makeLighting())
+        root.addChild(SceneStaging.makeLighting())
         // Slicer Projects sit on a plate hint at the true plate size; Vanilla
         // files (and projects whose metadata lacks a plate size) keep the
         // Apple-minimal backdrop.
         if let hint = makePlateHint(for: document, beneath: model) {
             root.addChild(hint)
-        } else if let backdrop = makeBackdrop(beneath: model) {
+        } else if let backdrop = SceneStaging.makeBackdrop(beneath: model) {
             root.addChild(backdrop)
         }
         return root
     }
 
-    /// The bounds cameras should frame: the document's geometry (the "Model"
-    /// subtree), not staging like the backdrop, which is deliberately much
-    /// wider than the model. A scene with no geometry at all (an empty Plate)
-    /// frames its staging instead, so the camera shows the empty bed.
+    /// The bounds cameras should frame — see ``SceneStaging/modelBounds(of:)``.
     @MainActor
     public static func modelBounds(of scene: Entity) -> BoundingBox {
-        let model = (scene.findEntity(named: "Model") ?? scene).visualBounds(relativeTo: nil)
-        return model.extents.max() > 0 ? model : scene.visualBounds(relativeTo: nil)
+        SceneStaging.modelBounds(of: scene)
     }
 
     // MARK: Model subtree
@@ -131,12 +138,13 @@ public enum SceneBuilder {
 
         var descriptor = MeshDescriptor(name: name ?? "mesh")
         descriptor.positions = MeshBuffer(mesh.positions)
-        descriptor.normals = MeshBuffer(computedNormals(positions: mesh.positions, indices: indices))
+        descriptor.normals = MeshBuffer(
+            SceneStaging.computedNormals(positions: mesh.positions, indices: indices))
         descriptor.primitives = .triangles(indices)
 
         // Triangles without a per-triangle color (nil) render in the object's
         // color, so partially painted meshes keep both their paint and base.
-        let objectNSColor = color.map(nsColor) ?? neutralColor
+        let objectNSColor = color.map(nsColor) ?? SceneStaging.neutralColor
         let materials: [any RealityKit.Material]
         if let triangleColors = perTriangleColors(of: mesh, filaments: filaments),
            triangleColors.count * 3 == indices.count {
@@ -158,10 +166,12 @@ public enum SceneBuilder {
                 }
             }
             descriptor.materials = .perFace(faceMaterials)
-            materials = order.map { material(for: $0.map(nsColor) ?? objectNSColor) }
+            materials = order.map {
+                SceneStaging.matteMaterial(for: $0.map(nsColor) ?? objectNSColor)
+            }
         } else {
             descriptor.materials = .allFaces(0)
-            materials = [material(for: objectNSColor)]
+            materials = [SceneStaging.matteMaterial(for: objectNSColor)]
         }
 
         guard let resource = try? MeshResource.generate(from: [descriptor]) else {
@@ -213,63 +223,12 @@ public enum SceneBuilder {
         return valid
     }
 
-    /// Area-weighted vertex normals: face normals (cross products, whose
-    /// length is proportional to face area) accumulated per vertex, then
-    /// normalized.
-    private static func computedNormals(positions: [SIMD3<Float>], indices: [UInt32]) -> [SIMD3<Float>] {
-        var normals = [SIMD3<Float>](repeating: .zero, count: positions.count)
-        for triangle in stride(from: 0, to: indices.count - 2, by: 3) {
-            let ia = Int(indices[triangle]), ib = Int(indices[triangle + 1]), ic = Int(indices[triangle + 2])
-            let a = positions[ia]
-            let faceNormal = simd_cross(positions[ib] - a, positions[ic] - a)
-            normals[ia] += faceNormal
-            normals[ib] += faceNormal
-            normals[ic] += faceNormal
-        }
-        for i in normals.indices {
-            let length = simd_length(normals[i])
-            normals[i] = length > .ulpOfOne ? normals[i] / length : SIMD3(0, 0, 1)
-        }
-        return normals
-    }
-
-    private static func material(for color: NSColor) -> SimpleMaterial {
-        SimpleMaterial(color: color, roughness: 0.55, isMetallic: false)
-    }
-
     private static func nsColor(_ color: ColorRGBA) -> NSColor {
         NSColor(
             srgbRed: CGFloat(color.red) / 255,
             green: CGFloat(color.green) / 255,
             blue: CGFloat(color.blue) / 255,
             alpha: CGFloat(color.alpha) / 255)
-    }
-
-    // MARK: Staging
-
-    /// Soft studio setup: shadow-casting key light plus fill and rim.
-    @MainActor
-    private static func makeLighting() -> Entity {
-        let lighting = Entity()
-        lighting.name = "Lighting"
-
-        let key = Entity()
-        key.components.set(DirectionalLightComponent(color: .white, intensity: 4000))
-        key.components.set(DirectionalLightComponent.Shadow())
-        key.look(at: .zero, from: [1.0, 1.6, 1.2], relativeTo: nil)
-        lighting.addChild(key)
-
-        let fill = Entity()
-        fill.components.set(DirectionalLightComponent(color: .white, intensity: 1500))
-        fill.look(at: .zero, from: [-1.4, 0.8, 1.0], relativeTo: nil)
-        lighting.addChild(fill)
-
-        let rim = Entity()
-        rim.components.set(DirectionalLightComponent(color: .white, intensity: 1000))
-        rim.look(at: .zero, from: [0.3, 1.0, -1.5], relativeTo: nil)
-        lighting.addChild(rim)
-
-        return lighting
     }
 
     /// A flat plate outline at the Slicer Project's true plate size: a thin
@@ -341,25 +300,5 @@ public enum SceneBuilder {
             child.position.y += offset.y
         }
         return hint
-    }
-
-    /// A rounded neutral platform just beneath the model, catching the key
-    /// light's contact shadow.
-    @MainActor
-    private static func makeBackdrop(beneath model: Entity) -> Entity? {
-        let bounds = model.visualBounds(relativeTo: nil)
-        guard bounds.extents.max() > 0 else { return nil }
-
-        let span = max(bounds.extents.x, bounds.extents.z)
-        let width = max(span * 4, 0.2)
-        let plane = ModelEntity(
-            mesh: .generatePlane(width: width, depth: width, cornerRadius: width * 0.5),
-            materials: [SimpleMaterial(
-                color: NSColor(srgbRed: 0.93, green: 0.93, blue: 0.94, alpha: 1),
-                roughness: 1, isMetallic: false)])
-        plane.name = "Backdrop"
-        // Nudged down to keep flat-bottomed models from z-fighting the plane.
-        plane.position = SIMD3(bounds.center.x, bounds.min.y - 0.001, bounds.center.z)
-        return plane
     }
 }
