@@ -23,3 +23,4 @@ ThumbExt/ThumbExt.entitlements
 
 # Corpus binaries: storage decision (LFS vs release asset) pending — issue #3
 Corpus/**/*.3mf
+Corpus/**/*.glb
