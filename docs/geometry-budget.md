@@ -12,6 +12,15 @@ The budget counts vertices *and* triangles because both allocate memory —
 a vertex flood with no triangles must spend budget too. Real meshes run
 ~1 vertex per 2 triangles, so 4M elements ≈ a 2.7M-triangle model.
 
+GLB (`GLBParseLimits.quickLookExtension`) carries the **same 4,000,000**, and
+for the same reason: it bounds the same RealityKit allocations under the same
+extension memory ceiling. The two limit types stay separate because the rest
+of what each format needs bounded differs — a GLB has no zip stream to guard,
+a 3MF has no texture payload — but this number must move in step. GLB charges
+the budget from each accessor's *declared* count before materializing the
+array, so a file claiming 200 million vertices is turned away rather than
+allocated for.
+
 ## Why the whole package, not literally per Plate
 
 The panel shows one Plate at a time, but geometry memory is committed at

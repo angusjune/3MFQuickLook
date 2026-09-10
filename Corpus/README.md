@@ -1,6 +1,6 @@
 # Test corpus
 
-Real-world and synthetic 3MF files that drive the parse-seam and
+Real-world and synthetic model files that drive the parse-seam and
 scene-seam tests (see the PRD's Testing Decisions, issue #1).
 
 Drop files into the folder matching their flavor (`CONTEXT.md` glossary):
@@ -11,6 +11,9 @@ Drop files into the folder matching their flavor (`CONTEXT.md` glossary):
 - `slicer-projects/` — Bambu Studio / OrcaSlicer projects (plates,
   filament assignments, plate thumbnails). PrusaSlicer projects too.
 - `sliced/` — `.gcode.3mf` files.
+- `glb/` — binary glTF exports (`.glb`), drivers of the GLBKit corpus
+  tests. Worth having: one textured multi-material scene and one
+  skinned, animated character (bind-pose previewing).
 - `pathological/` — corrupt, truncated, zip-bomb, image-bomb,
   over-budget, and exotic-extension files. Everything except the two
   hand-collected extension samples regenerates deterministically with

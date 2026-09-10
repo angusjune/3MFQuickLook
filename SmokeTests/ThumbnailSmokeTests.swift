@@ -21,6 +21,9 @@ import UniformTypeIdentifiers
     /// surface the paint-color acceptance criterion names.
     private static let paintedCorpusFile = Smoke.corpusFile("slicer-projects/synthetic_painted.3mf")
 
+    /// A real GLB export: textured, multi-material, interleaved buffers.
+    private static let glbCorpusFile = Smoke.corpusFile("glb/textured-scene.glb")
+
     @Test(
         .timeLimit(.minutes(2)),
         .enabled(if: FileManager.default.fileExists(atPath: corpusFile.path)))
@@ -89,6 +92,45 @@ import UniformTypeIdentifiers
         #expect(red > 100, "painted red face missing from the thumbnail")
         #expect(green > 100, "painted green face missing from the thumbnail")
         #expect(yellow > 100, "base-filament yellow faces missing from the thumbnail")
+    }
+
+    /// The GLB render path, end to end through the real sandboxed appex.
+    ///
+    /// Deliberately fed to the extension under a `.3mf` filename: format is
+    /// decided by the file's leading bytes, so this still parses and renders
+    /// as a GLB — but it routes around the one thing that cannot be fixed
+    /// from inside the app. macOS types `.glb` as `org.khronos.glb`, and the
+    /// system's SceneKit thumbnail extension claims all of
+    /// `public.3d-content` and wins that election, then fails (SceneKit
+    /// cannot read glTF). Asking for a thumbnail of a real `.glb` therefore
+    /// tests Apple's extension, not ours. See docs/adr/0006-glb-support.md.
+    @Test(
+        .timeLimit(.minutes(2)),
+        .enabled(if: FileManager.default.fileExists(atPath: glbCorpusFile.path)))
+    func glbGeometryRendersThroughTheThumbnailExtension() async throws {
+        try await Smoke.registerHostApp()
+
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("smoke-glb-\(UUID().uuidString)")
+            .appendingPathExtension("3mf")
+        try FileManager.default.copyItem(at: Self.glbCorpusFile, to: fixture)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+
+        let request = QLThumbnailGenerator.Request(
+            fileAt: fixture,
+            size: CGSize(width: 256, height: 256),
+            scale: 2,
+            representationTypes: .thumbnail)
+        request.iconMode = false
+
+        let representation = try await QLThumbnailGenerator.shared
+            .generateBestRepresentation(for: request)
+
+        let image = representation.cgImage
+        #expect(image.width > 0)
+        #expect(
+            distinctPixelValueCount(in: image) > 1,
+            "GLB thumbnail should not be a uniform blank")
     }
 
     /// Regression: the reply's drawing block filled a rect measured in points
@@ -181,6 +223,13 @@ import UniformTypeIdentifiers
                     identifiers.contains(metadataContentType),
                     "\(extensionName) must support Finder's metadata content type: \(metadataContentType)")
             }
+
+            // The GLB claim is what wins the Preview Extension the .glb
+            // election; losing the declaration would silently take the
+            // spacebar preview away with nothing else failing.
+            #expect(
+                identifiers.contains("org.khronos.glb"),
+                "\(extensionName) must support the system's .glb content type")
 
             if extensionName == "PreviewExt" {
                 #expect(

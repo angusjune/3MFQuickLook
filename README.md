@@ -4,9 +4,10 @@
 
 # 3MF QuickLook
 
-Quick Look previews and Finder thumbnails for `.3mf` files on macOS 15+.
-Press Space on a 3MF file and get an interactive 3D preview; folders of models
-get real thumbnails instead of blank icons.
+Quick Look previews and Finder thumbnails for `.3mf` files on macOS 15+, plus
+Quick Look previews for `.glb` (binary glTF). Press Space on a model file and
+get an interactive 3D preview; folders of 3MF models get real thumbnails
+instead of blank icons.
 
 <p align="center">
   <img src="docs/images/quicklook-preview.png" width="700"
@@ -32,14 +33,19 @@ get real thumbnails instead of blank icons.
   images alongside their print metadata, rather than as 3D geometry.
 - **Painted models** — multi-color painted models render in their paint
   colors, approximated per triangle.
+- **GLB models** — Space on a `.glb` (binary glTF) file previews it in the
+  same 3D view, with the file's own PBR materials and base-color textures,
+  and an info line reading its size, mesh count and triangle count. Skinned
+  and animated models preview in their bind pose. See the note on GLB Finder
+  thumbnails below.
 - **Info line** — dimensions, object count, estimated print time, and a dot
-  for each filament in use.
+  for each filament in use; for GLB, size, meshes and triangles.
 - **Built for real-world files** — oversized meshes, corrupt archives and zip
   bombs are detected and reported rather than hanging Finder. Models too
   detailed to preview inline say so, and open in the app instead.
-- **Host app** — a thin viewer: open a `.3mf` file for the same interactive
-  view in a window, with first-run onboarding for enabling the extensions.
-  It's not a slicer or an editor.
+- **Host app** — a thin viewer: open a `.3mf` or `.glb` file for the same
+  interactive view in a window, with first-run onboarding for enabling the
+  extensions. It's not a slicer or an editor.
 
   <img src="docs/images/host-app.png" width="700"
        alt="The 3MF QuickLook app window showing a multi-part model on its build plate">
@@ -81,12 +87,26 @@ macOS occasionally needs a nudge to route Quick Look to a new extension:
 - Relaunch Finder (Option-right-click its Dock icon → Relaunch), or log out
   and back in.
 
+### GLB: previews yes, Finder thumbnails no
+
+`.glb` files get the Space-bar preview, but not rendered Finder icons. macOS
+types them as `org.khronos.glb`, which conforms to `public.3d-content`, and
+the system's own SceneKit thumbnail extension claims that whole family and
+wins the thumbnail election — then fails, because SceneKit cannot read glTF.
+Third-party extensions are never consulted. There is no way around it from
+inside the app: the claim was tested at the exact type, at the supertype, as
+the type's default handler, and behind an app-owned identifier for the `.glb`
+extension, and macOS elects the system extension in every case. `.3mf`
+thumbnails are unaffected — that extension is ours alone, because nothing in
+macOS declares `.3mf`.
+
 ## Usage
 
-- Select a `.3mf` file in Finder and press **Space**: interactive preview
-  (drag = orbit, scroll/pinch = zoom, secondary drag = pan).
+- Select a `.3mf` or `.glb` file in Finder and press **Space**: interactive
+  preview (drag = orbit, scroll/pinch = zoom, secondary drag = pan).
 - With a multi-plate slicer project, pick a plate from the filmstrip.
-- Icon and gallery views show rendered thumbnails automatically.
+- Icon and gallery views show rendered thumbnails automatically for `.3mf`
+  (see the GLB note above).
 - Double-click (or "Open With") to view the model in the app window. The app
   has no preview complexity limit, so very detailed models that can't render
   inline still open here.
@@ -104,15 +124,17 @@ open "build/Build/Products/Debug/3MF QuickLook.app"   # registers the extensions
 qlmanage -r                                            # reset Quick Look after rebuilds
 ```
 
-Then press Space on any `.3mf` file in Finder.
+Then press Space on any `.3mf` or `.glb` file in Finder.
 
 ### Layout
 
 - `App/`, `PreviewExt/`, `ThumbExt/` — the Host App and the two Quick Look
   extensions, thin adapters over the packages.
 - `Packages/ThreeMFKit` — 3MF parsing: package file → `ThreeMFDocument`.
+- `Packages/GLBKit` — binary glTF parsing: `.glb` file → `GLBDocument`.
 - `Packages/ModelViewer` — scene building and the shared interactive Viewer:
-  document → RealityKit entity tree, plus offscreen thumbnail rendering.
+  document → RealityKit entity tree, plus offscreen thumbnail rendering. Both
+  formats meet here, as `ModelDocument`.
 - `Packages/HostAppKit` — Host-App-side logic: Quick Look extension status
   probing, onboarding policy, the bundled sample.
 - `SmokeTests/` — end-to-end thumbnail smoke test.
@@ -125,6 +147,7 @@ Then press Space on any `.3mf` file in Finder.
 
 ```sh
 swift test --package-path Packages/ThreeMFKit
+swift test --package-path Packages/GLBKit
 swift test --package-path Packages/ModelViewer
 swift test --package-path Packages/HostAppKit
 xcodebuild -project ThreeMFQuickLook.xcodeproj -scheme ThreeMFQuickLook \
