@@ -18,7 +18,10 @@ struct OnboardingView: View {
             actions
         }
         .padding(24)
-        .frame(width: 480)
+        // Wide enough for the four action buttons to keep their full labels
+        // at large system text sizes; at 480 macOS truncated both "Save
+        // Sample File…" and "Open System Settings…" down to ellipses.
+        .frame(width: 620)
         .task { await refresh() }
         // Coming back from System Settings re-activates the app; re-probe so
         // the rows reflect what the user just toggled.
@@ -31,25 +34,30 @@ struct OnboardingView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Quick Look for 3MF Files")
+            Text("Quick Look for 3MF and GLB Files")
                 .font(.title2.bold())
-            Text("Press Space on a .3mf file in Finder for an interactive 3D preview, and get real thumbnails instead of blank icons.")
+            Text("Press Space on a .3mf or .glb file in Finder for an interactive 3D preview, and get real thumbnails for 3MF files instead of blank icons.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
+    /// Which files each extension covers is part of its row, because the
+    /// answer differs: macOS reserves .glb icons for its own thumbnail
+    /// extension, so no third-party app can draw them (docs/adr/0006).
+    /// Someone who enabled both and still sees plain .glb icons should find
+    /// that here rather than conclude the app is broken.
     private var statusBox: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 10) {
                 statusRow(
                     title: "Spacebar previews",
-                    subtitle: "Preview Extension",
+                    subtitle: "Preview Extension · .3mf and .glb",
                     state: status?.preview)
                 Divider()
                 statusRow(
                     title: "Finder thumbnails",
-                    subtitle: "Thumbnail Extension",
+                    subtitle: "Thumbnail Extension · .3mf",
                     state: status?.thumbnail)
             }
             .padding(8)
@@ -104,18 +112,23 @@ struct OnboardingView: View {
         }
     }
 
-    @ViewBuilder
     private var guidance: some View {
-        if let status, status.allEnabled {
-            Label {
-                Text("Quick Look is ready. Save the sample file, then press Space on it in Finder to see it in 3D.")
+        VStack(alignment: .leading, spacing: 10) {
+            if let status, status.allEnabled {
+                Label {
+                    Text("Quick Look is ready. Save the sample file, then press Space on it in Finder to see it in 3D.")
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                }
+            } else {
+                Text("Turn both extensions on under Quick Look in System Settings → General → Login Items & Extensions, then come back here.")
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
             }
-        } else {
-            Text("Turn both extensions on under Quick Look in System Settings → General → Login Items & Extensions, then come back here.")
+            Text("GLB files keep their usual Finder icon: macOS draws .glb icons with its own extension. Their spacebar preview is the full 3D view.")
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
