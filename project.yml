@@ -103,12 +103,19 @@ targets:
             LSItemContentTypes: [io.3mf.model, com.angusjune.threemf]
             CFBundleTypeRole: Viewer
             LSHandlerRank: Alternate
+          # macOS declares org.khronos.glb itself (CoreTypes), so we neither
+          # import nor re-export it — the identifier is already valid here,
+          # which is all Quick Look's validation of the appexes'
+          # QLSupportedContentTypes needs. Exporting a rival identifier for
+          # the .glb extension was tried and does not work: a CoreTypes
+          # declaration outranks a third-party one, and .glb keeps resolving
+          # to org.khronos.glb.
           - CFBundleTypeName: GLB Model
             LSItemContentTypes: [org.khronos.glb]
             CFBundleTypeRole: Viewer
-            # Alternate, not Default: Preview.app already claims .glb, and
-            # taking the double-click away from it is not what "add a Quick
-            # Look preview" asked for.
+            # Alternate, not Default: Preview.app is the system's handler for
+            # .glb, and taking the double-click away from it is not what
+            # adding a Quick Look preview asked for.
             LSHandlerRank: Alternate
         # Our own namespaced identifier for .3mf (we import the format but own
         # this identifier). Deliberately digit-free and NOT conforming to
@@ -129,18 +136,6 @@ targets:
             UTTypeTagSpecification:
               public.filename-extension: [3mf]
               public.mime-type: [model/3mf]
-          # macOS declares org.khronos.glb itself (CoreTypes); this mirrors
-          # that declaration verbatim — conformances included — so the
-          # identifier is valid in this bundle before Quick Look validates
-          # the appexes' QLSupportedContentTypes. Unlike .3mf we do NOT own
-          # an identifier for .glb: inventing a second type for a filename
-          # extension the system already resolves only splits the election.
-          - UTTypeIdentifier: org.khronos.glb
-            UTTypeDescription: GL Transmission Format - Binary
-            UTTypeConformsTo: [public.data, public.3d-content]
-            UTTypeTagSpecification:
-              public.filename-extension: [glb]
-              public.mime-type: [model/gltf-binary]
 
   PreviewExt:
     type: app-extension
