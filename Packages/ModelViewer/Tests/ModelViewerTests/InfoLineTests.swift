@@ -2,7 +2,7 @@ import Foundation
 import simd
 import Testing
 import ThreeMFKit
-@testable import ThreeMFViewer
+@testable import ModelViewer
 
 /// Locks the Info Line's formatting and its omission policy (issue #7):
 /// absent metadata drops its segment — no placeholders, no dashes — and a

@@ -1,7 +1,7 @@
 import RealityKit
 import simd
 import Testing
-import ThreeMFViewer
+import ModelViewer
 
 /// The custom camera rig of ADR-0001's amendment: drag = orbit,
 /// scroll/pinch = zoom, secondary drag = pan. Pure math, no view.

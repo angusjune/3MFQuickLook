@@ -111,7 +111,7 @@ Then press Space on any `.3mf` file in Finder.
 - `App/`, `PreviewExt/`, `ThumbExt/` — the Host App and the two Quick Look
   extensions, thin adapters over the packages.
 - `Packages/ThreeMFKit` — 3MF parsing: package file → `ThreeMFDocument`.
-- `Packages/ThreeMFViewer` — scene building and the shared interactive Viewer:
+- `Packages/ModelViewer` — scene building and the shared interactive Viewer:
   document → RealityKit entity tree, plus offscreen thumbnail rendering.
 - `Packages/HostAppKit` — Host-App-side logic: Quick Look extension status
   probing, onboarding policy, the bundled sample.
@@ -125,7 +125,7 @@ Then press Space on any `.3mf` file in Finder.
 
 ```sh
 swift test --package-path Packages/ThreeMFKit
-swift test --package-path Packages/ThreeMFViewer
+swift test --package-path Packages/ModelViewer
 swift test --package-path Packages/HostAppKit
 xcodebuild -project ThreeMFQuickLook.xcodeproj -scheme ThreeMFQuickLook \
   -configuration Debug -derivedDataPath build test    # end-to-end smoke

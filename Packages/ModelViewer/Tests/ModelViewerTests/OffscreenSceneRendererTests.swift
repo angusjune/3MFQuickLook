@@ -4,7 +4,7 @@ import RealityKit
 import simd
 import Testing
 import ThreeMFKit
-import ThreeMFViewer
+import ModelViewer
 
 @MainActor
 @Suite struct OffscreenSceneRendererTests {

@@ -7,7 +7,7 @@ description: Build, launch, and drive 3MF QuickLook to observe a change at its r
 
 The surfaces are GUIs: the Host App document window and the Finder
 spacebar Quick Look panel (Preview Extension). Both render the shared
-`Viewer` from ThreeMFViewer. Thumbnails (ThumbExt) are a third surface;
+`Viewer` from ModelViewer. Thumbnails (ThumbExt) are a third surface;
 check those via a `QLThumbnailGenerator` harness, never `qlmanage -t`
 (CLAUDE.md).
 

@@ -3,7 +3,7 @@ import RealityKit
 import simd
 import Testing
 import ThreeMFKit
-import ThreeMFViewer
+import ModelViewer
 
 /// Scene-seam tests: given a document, the entity tree has these entities,
 /// transforms, and materials. Headless — no pixel assertions.
@@ -535,9 +535,9 @@ import ThreeMFViewer
 
     nonisolated private static let corpusRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()  // strip SceneSeamTests.swift
-        .deletingLastPathComponent()  // strip ThreeMFViewerTests
+        .deletingLastPathComponent()  // strip ModelViewerTests
         .deletingLastPathComponent()  // strip Tests
-        .deletingLastPathComponent()  // strip ThreeMFViewer
+        .deletingLastPathComponent()  // strip ModelViewer
         .deletingLastPathComponent()  // strip Packages
         .appendingPathComponent("Corpus")
 

@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 import ThreeMFKit
-import ThreeMFViewer
+import ModelViewer
 
 /// A document window: the shared static-then-3D ``PreviewView`` over the file.
 /// The Host App has no Geometry Budget (CONTEXT.md) — every file, however

@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 import Testing
-@testable import ThreeMFViewer
+@testable import ModelViewer
 
 /// Image-bomb defense (issue #10): package-supplied image bytes — Embedded
 /// Thumbnails, Plate Thumbnails — decode only when their declared pixel

@@ -1,6 +1,6 @@
 import Testing
 import ThreeMFKit
-@testable import ThreeMFViewer
+@testable import ModelViewer
 
 /// Locks the static-then-3D handoff contract (issue #5): the preview shows
 /// exactly one layer per phase. In particular, once the document is loaded the

@@ -4,7 +4,7 @@ import RealityKit
 import SwiftUI
 import ThreeMFKit
 
-let viewerLogger = Logger(subsystem: "com.angusjune.ThreeMFViewer", category: "viewer")
+let viewerLogger = Logger(subsystem: "com.angusjune.ModelViewer", category: "viewer")
 
 /// The shared interactive 3D view used by the Host App and the Preview
 /// Extension: the document's scene under the custom camera rig

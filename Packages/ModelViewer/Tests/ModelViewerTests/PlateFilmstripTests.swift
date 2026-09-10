@@ -1,6 +1,6 @@
 import Testing
 import ThreeMFKit
-@testable import ThreeMFViewer
+@testable import ModelViewer
 
 /// Locks the Filmstrip visibility policy (issue #6): the Filmstrip is shown
 /// only for multi-plate Slicer Projects. One Plate, zero Plates, or a Vanilla

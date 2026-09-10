@@ -3,7 +3,7 @@ import OSLog
 import Quartz
 import SwiftUI
 import ThreeMFKit
-import ThreeMFViewer
+import ModelViewer
 
 private let logger = Logger(
     subsystem: "com.angusjune.ThreeMFQuickLook.PreviewExt", category: "preview")

@@ -3,7 +3,7 @@ import ImageIO
 import OSLog
 import QuickLookThumbnailing
 import ThreeMFKit
-import ThreeMFViewer
+import ModelViewer
 
 private let logger = Logger(
     subsystem: "com.angusjune.ThreeMFQuickLook.ThumbExt", category: "thumbnail")

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import ThreeMFKit
-@testable import ThreeMFViewer
+@testable import ModelViewer
 
 /// Locks the sliced-file preview's model policy (issue #8): every Plate gets
 /// a cell with its image decoded exactly once, the initial selection prefers
