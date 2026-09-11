@@ -56,6 +56,23 @@ log() { printf '\n==> %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
+# An app can be validly signed and still be unlaunchable: with the hardened
+# runtime on, library validation rejects every embedded framework whose Team ID
+# differs from the process's, and an ad-hoc signature has none to match with.
+# `codesign --verify` passes either way, so check the CodeDirectory flags.
+assert_frameworks_loadable() {
+    local app="$1" flags
+    flags="$(codesign --display --verbose=2 "$app" 2>&1 \
+        | sed -n 's/^CodeDirectory .*flags=[^(]*(\([^)]*\)).*/\1/p')"
+    [[ ",$flags," == *",adhoc,"* && ",$flags," == *",runtime,"* ]] || return 0
+    # The one way the combination is legal: the app opts out of validation.
+    if codesign --display --entitlements - --xml "$app" 2> /dev/null \
+        | grep -q 'com.apple.security.cs.disable-library-validation'; then
+        return 0
+    fi
+    die "ad-hoc signature with the hardened runtime (flags: $flags) — the app would abort at launch loading Sparkle.framework, because library validation has no Team ID to match. Build the ad-hoc path with ENABLE_HARDENED_RUNTIME=NO."
+}
+
 usage() {
     # Print the header comment block (everything between the shebang and the
     # first non-comment line) as the help text.
@@ -153,6 +170,10 @@ if [[ "$DRY_RUN" -eq 1 || "$UNSIGNED" -eq 1 ]]; then
     else
         log "[dry-run] Building Release (ad-hoc signed, no notarization)"
     fi
+    # No ENABLE_HARDENED_RUNTIME here: project.yml turns it off, because an
+    # ad-hoc signature has no Team ID for library validation to match and the
+    # app would abort at launch loading Sparkle.framework (see project.yml,
+    # and assert_frameworks_loadable below, which enforces it).
     xcodebuild -project "$REPO_ROOT/ThreeMFQuickLook.xcodeproj" \
         -scheme "$SCHEME" -configuration Release \
         -derivedDataPath "$OUTPUT_DIR/DerivedData" \
@@ -167,6 +188,7 @@ else
         CODE_SIGN_STYLE=Manual \
         "CODE_SIGN_IDENTITY=$DEVELOPER_ID_IDENTITY" \
         "DEVELOPMENT_TEAM=$APPLE_TEAM_ID" \
+        ENABLE_HARDENED_RUNTIME=YES \
         "OTHER_CODE_SIGN_FLAGS=--timestamp" | tail -5
 
     log "Exporting with the developer-id method"
@@ -202,6 +224,7 @@ for appex in PreviewExt ThumbExt; do
 done
 [[ -d "$APP_PATH/Contents/Frameworks/Sparkle.framework" ]] \
     || die "Sparkle.framework is not embedded"
+assert_frameworks_loadable "$APP_PATH"
 ed_key="$(/usr/libexec/PlistBuddy -c 'Print SUPublicEDKey' "$APP_PATH/Contents/Info.plist" 2> /dev/null || true)"
 if [[ -z "$ed_key" ]]; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
