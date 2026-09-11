@@ -9,10 +9,18 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "15.0"
-    # Notarization requires the hardened runtime; keeping it on everywhere
-    # matches Xcode's default for new projects (debugging still works via the
-    # injected get-task-allow entitlement in Debug).
-    ENABLE_HARDENED_RUNTIME: YES
+    # OFF for as long as we ad-hoc sign (ADR-0005), and it has to be: the
+    # hardened runtime turns on library validation, which requires every
+    # library a process loads to carry the same Team ID as the process — and
+    # an ad-hoc signature carries no Team ID at all. dyld therefore aborts the
+    # app at launch the moment it reaches the embedded Sparkle.framework
+    # ("mapping process and mapped file (non-platform) have different Team
+    # IDs"). That is how 0.1.1 and 0.2.0 shipped, and it breaks local Debug
+    # builds the same way. Notarization does require the hardened runtime, so
+    # the Developer ID path in scripts/release.sh passes
+    # ENABLE_HARDENED_RUNTIME=YES back in explicitly — there a real Team ID
+    # satisfies validation.
+    ENABLE_HARDENED_RUNTIME: NO
     # Local-build defaults. Release builds are stamped by scripts/release.sh
     # (MARKETING_VERSION = tag without "v", CURRENT_PROJECT_VERSION = commit
     # count — the monotonically increasing number Sparkle compares).
